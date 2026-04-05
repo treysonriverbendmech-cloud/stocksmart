@@ -16,6 +16,8 @@ exports.handler = async (event) => {
   }
 
   const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  console.log('ANTHROPIC_API_KEY first 10 chars:', apiKey.slice(0, 10) || '(empty)');
+  console.log('ANTHROPIC_API_KEY length:', apiKey.length);
   if (!apiKey) {
     return { statusCode: 500, body: JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }) };
   }
