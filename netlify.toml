@@ -6,6 +6,12 @@
   NODE_VERSION = "18"
   SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
 
+[functions]
+  node_bundler = "zisi"
+
+[functions.analyze]
+  timeout = 26
+
 [[headers]]
   for = "/*"
   [headers.values]
