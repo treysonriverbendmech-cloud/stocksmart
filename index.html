@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0a0b0f">
-  <title>StockSmart — Parts Inventory</title>
+  <title>Partlocker</title>
   <style>
     :root {
       --bg: #0a0b0f; --surface: #111318; --surface2: #191c25; --surface3: #1e2230;
@@ -39,11 +39,13 @@
     }
     .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; user-select: none; }
     .logo-mark {
-      width: 34px; height: 34px;
+      height: 36px; min-width: 36px; max-width: 120px;
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border-radius: 9px; display: flex; align-items: center; justify-content: center;
       font-size: 17px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(99,102,241,0.4);
+      overflow: hidden; transition: max-width 0.2s;
     }
+    .logo-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .logo-text { font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
     .logo-sub { font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
     .header-stats { display: flex; gap: 16px; margin-left: 4px; }
@@ -269,10 +271,10 @@
 <header class="header">
   <div class="header-inner">
     <a class="logo" href="#">
-      <div class="logo-mark">🔧</div>
+      <div class="logo-mark" id="logoMark">🔧</div>
       <div>
-        <div class="logo-text">StockSmart</div>
-        <div class="logo-sub">Parts Inventory</div>
+        <div class="logo-text" id="logoName">Partlocker</div>
+        <div class="logo-sub" id="logoSub">Parts Inventory</div>
       </div>
     </a>
     <div class="header-stats">
@@ -447,6 +449,7 @@
     <div class="stabs">
       <button class="stab active" onclick="switchTab('categories')">Categories</button>
       <button class="stab" onclick="switchTab('boxes')">Locations</button>
+      <button class="stab" onclick="switchTab('branding')">Branding</button>
     </div>
     <!-- Categories tab -->
     <div class="stab-panel active" id="tabCategories">
@@ -462,6 +465,30 @@
         <input class="finput" id="newBoxName" placeholder="Location name (e.g. Van 1, Shop)" style="flex:1">
         <button class="btn btn-primary" onclick="addBox()">Add</button>
       </div>
+    </div>
+    <!-- Branding tab -->
+    <div class="stab-panel" id="tabBranding">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Customize the app with your company name and logo. Each company gets their own branded experience.</p>
+      <div class="fgroup" style="margin-bottom:16px">
+        <label class="flabel">Company Name</label>
+        <input id="sBrandName" class="finput" placeholder="e.g. Riverbend Mechanical">
+      </div>
+      <div class="fgroup" style="margin-bottom:16px">
+        <label class="flabel">App Subtitle</label>
+        <input id="sBrandSub" class="finput" placeholder="e.g. Parts Inventory">
+      </div>
+      <div class="fgroup" style="margin-bottom:16px">
+        <label class="flabel">Company Logo</label>
+        <div id="brandLogoPreview" style="width:100%;height:80px;border:2px dashed var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;margin-bottom:10px;background:var(--surface2);overflow:hidden">
+          <span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('brandLogoIn').click()">⬆ Upload Logo</button>
+          <button class="btn btn-danger btn-sm" onclick="clearBrandLogo()">✕ Remove</button>
+        </div>
+        <input type="file" id="brandLogoIn" accept="image/*" style="display:none" onchange="onBrandLogoFile(event)">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveBranding()" style="margin-top:8px">Save Branding</button>
     </div>
   </div>
 </div>
@@ -526,7 +553,7 @@ const DEFAULT_SUBS = {
 let parts       = [];
 let boxes       = [];
 let filtered    = [];
-let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)) };
+let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'' };
 let currentView = 'grid';
 let photoData   = null;
 let editingId   = null;
@@ -552,16 +579,22 @@ seedDefaultLocations();
 async function loadSettings() {
   try {
     const snap = await getDoc(doc(db, 'settings', 'app'));
-    if (snap.exists() && snap.data().subcategories) {
-      // Merge with defaults so new categories are always present
-      const saved = snap.data().subcategories;
-      Object.keys(DEFAULT_SUBS).forEach(cat => {
-        settings.subcategories[cat] = saved[cat] || DEFAULT_SUBS[cat];
-      });
+    if (snap.exists()) {
+      const d = snap.data();
+      // Merge subcategories with defaults so new categories are always present
+      if (d.subcategories) {
+        Object.keys(DEFAULT_SUBS).forEach(cat => {
+          settings.subcategories[cat] = d.subcategories[cat] || DEFAULT_SUBS[cat];
+        });
+      }
+      if (d.companyName)  settings.companyName  = d.companyName;
+      if (d.appSubtitle)  settings.appSubtitle  = d.appSubtitle;
+      if (d.logoUrl)      settings.logoUrl      = d.logoUrl;
     }
   } catch(e) { console.warn('Settings load failed, using defaults'); }
 }
 await loadSettings();
+applyBranding();
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 function updateStats() {
@@ -961,14 +994,14 @@ window.confirmQty = async function() {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 window.openSettings = function() {
-  renderCatEditor(); renderBoxList();
+  renderCatEditor(); renderBoxList(); loadBrandingForm();
   document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('active',i===0));
   document.querySelectorAll('.stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
   showModal('settingsModal');
 };
 
 window.switchTab = function(tab) {
-  const tabs = ['categories','boxes'];
+  const tabs = ['categories','boxes','branding'];
   document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
 };
@@ -1059,6 +1092,75 @@ async function seedDefaultLocations() {
     await addDoc(collection(db,'boxes'),{ name, createdAt:serverTimestamp() });
   }
 }
+
+// ─── Branding ─────────────────────────────────────────────────────────────────
+function applyBranding() {
+  const name     = settings.companyName || 'Partlocker';
+  const subtitle = settings.appSubtitle || 'Parts Inventory';
+  const logo     = settings.logoUrl;
+  document.getElementById('logoName').textContent = name;
+  document.getElementById('logoSub').textContent  = subtitle;
+  document.title = name;
+  const mark = document.getElementById('logoMark');
+  if (logo) {
+    mark.style.background = '#fff';
+    mark.style.padding    = '3px';
+    mark.style.minWidth   = '90px';
+    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain">`;
+  } else {
+    mark.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+    mark.style.padding    = '';
+    mark.style.minWidth   = '36px';
+    mark.innerHTML = '🔧';
+  }
+}
+
+let pendingLogoData = null;
+
+function loadBrandingForm() {
+  document.getElementById('sBrandName').value = settings.companyName || '';
+  document.getElementById('sBrandSub').value  = settings.appSubtitle || '';
+  pendingLogoData = null;
+  const prev = document.getElementById('brandLogoPreview');
+  if (settings.logoUrl) {
+    prev.innerHTML = `<img src="${settings.logoUrl}" style="max-height:76px;max-width:100%;object-fit:contain">`;
+  } else {
+    prev.innerHTML = `<span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>`;
+  }
+}
+
+window.onBrandLogoFile = async function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  e.target.value = '';
+  toast('Processing logo…');
+  pendingLogoData = await compress(file, 400, 0.85);
+  document.getElementById('brandLogoPreview').innerHTML =
+    `<img src="${pendingLogoData}" style="max-height:76px;max-width:100%;object-fit:contain">`;
+  toast('Logo ready — click Save Branding','ok');
+};
+
+window.clearBrandLogo = function() {
+  pendingLogoData = '';
+  document.getElementById('brandLogoPreview').innerHTML =
+    `<span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>`;
+};
+
+window.saveBranding = async function() {
+  const companyName = document.getElementById('sBrandName').value.trim();
+  const appSubtitle = document.getElementById('sBrandSub').value.trim();
+  const logoUrl = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
+  try {
+    await setDoc(doc(db,'settings','app'), {
+      subcategories: settings.subcategories,
+      companyName, appSubtitle, logoUrl
+    });
+    settings.companyName = companyName;
+    settings.appSubtitle = appSubtitle;
+    settings.logoUrl     = logoUrl;
+    applyBranding();
+    toast('Branding saved!','ok');
+  } catch(err) { toast('Save failed: '+err.message,'err'); }
+};
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.body.style.overflow='hidden'; }
