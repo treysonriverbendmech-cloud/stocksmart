@@ -31,7 +31,20 @@ exports.handler = async (event) => {
         },
         {
           type: 'text',
-          text: 'Analyze this inventory item photo. Respond with ONLY a JSON object, no markdown:\n{"name":"item name","category":"Electronics|Furniture|Clothing|Tools|Food|Books|Sports|Toys|Kitchen|Office|Other","price":0.00,"notes":"brief description"}'
+          text: `Analyze this inventory item photo for an HVAC contractor's parts inventory system. Respond with ONLY a JSON object, no markdown, no code blocks.
+
+Use exactly this structure:
+{"name":"specific part name","category":"HVAC|Plumbing|Electrical|General","subcategory":"subcategory name","keywords":["keyword1","keyword2","keyword3"],"price":0.00,"notes":"brief description of item condition and key features","confidence":85}
+
+Category and subcategory rules:
+- HVAC subcategories: New Parts, Used Parts, Ductwork & Fittings, Air Distribution Devices, Filters / Air Quality, Motors & Compressors, Refrigerant & Chemicals, Thermostats & Controls, Pipes & Fittings, Other
+- Plumbing subcategories: Pipes & Fittings, Rigging Material, Sealants & Adhesives, Rigging & Strapping, Other
+- Electrical subcategories: Wire / Cables, Conduit & Fittings, Straps & Hanging, Breakers & Panels, Electrical Devices, Junction Boxes, Other
+- General subcategories: Fasteners & Hardware, Safety Equipment, Consumables, Job Supplies, Other
+
+Confidence (0-100): how certain you are about the identification. 90+ if very clear, 70-89 if mostly clear, 50-69 if uncertain, below 50 if very unclear.
+Price: estimate fair used/retail value in USD, or 0 if unknown.
+Keywords: 3-6 relevant search terms (brand, model, part number visible in image, material, size, etc.).`
         }
       ]
     }]
