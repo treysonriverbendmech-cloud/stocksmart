@@ -307,7 +307,7 @@
       <option value="">All Subcategories</option>
     </select>
     <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
-      <option value="">All Boxes</option>
+      <option value="">All Locations</option>
     </select>
     <div class="view-pills">
       <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
@@ -389,12 +389,18 @@
           <input id="fMinQty" class="finput" type="number" min="0" placeholder="0">
         </div>
       </div>
-      <!-- Box -->
-      <div class="fgroup">
-        <label class="flabel">Box / Location</label>
-        <select id="fBoxSel" class="fselect">
-          <option value="">No box assigned</option>
-        </select>
+      <!-- Location + Box # -->
+      <div class="frow">
+        <div class="fgroup">
+          <label class="flabel">Location</label>
+          <select id="fBoxSel" class="fselect">
+            <option value="">No location</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label class="flabel">Box #</label>
+          <input id="fBoxNum" class="finput" type="text" placeholder="e.g. Box 3, Bin A">
+        </div>
       </div>
       <!-- Keywords -->
       <div class="fgroup">
@@ -440,7 +446,7 @@
     </div>
     <div class="stabs">
       <button class="stab active" onclick="switchTab('categories')">Categories</button>
-      <button class="stab" onclick="switchTab('boxes')">Boxes</button>
+      <button class="stab" onclick="switchTab('boxes')">Locations</button>
     </div>
     <!-- Categories tab -->
     <div class="stab-panel active" id="tabCategories">
@@ -448,13 +454,12 @@
       <div id="catEditor"></div>
       <button class="btn btn-primary btn-full" onclick="saveSettings()" style="margin-top:8px">Save Category Settings</button>
     </div>
-    <!-- Boxes tab -->
+    <!-- Locations tab -->
     <div class="stab-panel" id="tabBoxes">
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Manage your storage boxes and locations.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Manage your storage locations (e.g. Shop, Van 1, Storage 2). Parts also have a separate Box # field for the specific bin or box within that location.</p>
       <div class="box-list" id="boxList"></div>
       <div class="add-box-row" style="margin-top:16px">
-        <input class="finput" id="newBoxName" placeholder="Box name (e.g. Box A)" style="flex:1">
-        <input class="finput" id="newBoxLoc" placeholder="Location (e.g. Warehouse)" style="flex:1">
+        <input class="finput" id="newBoxName" placeholder="Location name (e.g. Van 1, Shop)" style="flex:1">
         <button class="btn btn-primary" onclick="addBox()">Add</button>
       </div>
     </div>
@@ -493,7 +498,7 @@
 // ─── Firebase ─────────────────────────────────────────────────────────────────
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
-  getFirestore, collection, addDoc, updateDoc, deleteDoc, setDoc,
+  getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
   doc, getDoc, onSnapshot, query, orderBy, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
@@ -541,6 +546,8 @@ onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
   updateBoxFilter(); renderBoxList();
 }, err => { console.error('Firestore boxes:', err); });
 
+seedDefaultLocations();
+
 // ─── Load settings ────────────────────────────────────────────────────────────
 async function loadSettings() {
   try {
@@ -571,10 +578,10 @@ function updateStats() {
 function updateBoxFilter() {
   const sel = document.getElementById('boxFilter');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">All Boxes</option>';
+  sel.innerHTML = '<option value="">All Locations</option>';
   boxes.forEach(b => {
     const o = document.createElement('option');
-    o.value = b.id; o.textContent = b.name + (b.location ? ` — ${b.location}` : '');
+    o.value = b.id; o.textContent = b.name;
     if (b.id === cur) o.selected = true;
     sel.appendChild(o);
   });
@@ -642,7 +649,7 @@ function renderGrid() {
         <div class="card-meta">
           <span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
-          ${box?`<span class="meta-item">📦 ${xss(box.name)}</span>`:''}
+          ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
         ${kws?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${kws}</div>`:''}
       </div>
@@ -679,6 +686,7 @@ window.openAdd = function(id=null) {
       updateSubcatOptions(p.category);
       document.getElementById('fSubcat').value = p.subcategory || '';
       document.getElementById('fBoxSel').value = p.boxId || '';
+      document.getElementById('fBoxNum').value = p.boxNumber || '';
       if (p.photo) { photoData = p.photo; setZonePhoto(p.photo); }
       else { photoData = null; resetZone(); }
     }
@@ -696,16 +704,17 @@ function resetForm() {
   document.getElementById('fQty').value='1';
   document.getElementById('fMinQty').value='';
   document.getElementById('fBoxSel').value='';
+  document.getElementById('fBoxNum').value='';
   photoData=null; editingId=null; resetZone(); hideConfidence();
 }
 
 function populateBoxSelect() {
   const sel = document.getElementById('fBoxSel');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">No box assigned</option>';
+  sel.innerHTML = '<option value="">No location</option>';
   boxes.forEach(b => {
     const o = document.createElement('option');
-    o.value = b.id; o.textContent = b.name + (b.location?` — ${b.location}`:'');
+    o.value = b.id; o.textContent = b.name;
     if (b.id===cur) o.selected=true;
     sel.appendChild(o);
   });
@@ -827,6 +836,7 @@ window.saveItem = async function() {
   const kw = document.getElementById('fKeywords').value.split(',').map(s=>s.trim()).filter(Boolean);
   const boxId = document.getElementById('fBoxSel').value;
   const box = boxes.find(b=>b.id===boxId);
+  const boxNumber = document.getElementById('fBoxNum').value.trim();
   const data = {
     name,
     category:    document.getElementById('fCat'    ).value,
@@ -837,6 +847,7 @@ window.saveItem = async function() {
     keywords:    kw,
     boxId:       boxId || null,
     boxName:     box ? box.name : null,
+    boxNumber:   boxNumber || null,
     notes:       document.getElementById('fNotes').value.trim(),
     photo:       photoData || null,
     updatedAt:   serverTimestamp(),
@@ -889,7 +900,10 @@ window.openDetail = function(id) {
           <div class="dfield-val">${p.minQuantity||'—'}</div>
         </div>
       </div>
-      ${box?`<div><div class="dfield-label">Box / Location</div><div class="dfield-val">📦 ${xss(box.name)}${box.location?' — '+xss(box.location):''}</div></div>`:''}
+      ${box?`<div class="drow">
+        <div><div class="dfield-label">Location</div><div class="dfield-val">📍 ${xss(box.name)}</div></div>
+        ${p.boxNumber?`<div><div class="dfield-label">Box #</div><div class="dfield-val">📦 ${xss(p.boxNumber)}</div></div>`:'<div></div>'}
+      </div>`:''}
       ${kws?`<div><div class="dfield-label">Keywords</div><div class="tag-list" style="margin-top:4px">${kws}</div></div>`:''}
       ${p.notes?`<div><div class="dfield-label">Notes</div><div class="dfield-val" style="line-height:1.6">${xss(p.notes)}</div></div>`:''}
     </div>
@@ -1012,11 +1026,10 @@ function renderBoxList() {
   const el = document.getElementById('boxList');
   if (!el) return;
   el.innerHTML = boxes.length===0
-    ? '<p style="color:var(--text-muted);font-size:14px">No boxes yet. Add one below.</p>'
+    ? '<p style="color:var(--text-muted);font-size:14px">No locations yet. Add one below.</p>'
     : boxes.map(b=>`<div class="box-item">
         <div class="box-item-info">
-          <div class="box-item-name">📦 ${xss(b.name)}</div>
-          ${b.location?`<div class="box-item-loc">${xss(b.location)}</div>`:''}
+          <div class="box-item-name">📍 ${xss(b.name)}</div>
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteBox('${b.id}')">Delete</button>
       </div>`).join('');
@@ -1024,21 +1037,28 @@ function renderBoxList() {
 
 window.addBox = async function() {
   const name = document.getElementById('newBoxName').value.trim();
-  const loc  = document.getElementById('newBoxLoc' ).value.trim();
-  if (!name) { toast('Box name is required','err'); return; }
+  if (!name) { toast('Location name is required','err'); return; }
   try {
-    await addDoc(collection(db,'boxes'),{ name, location:loc||'', createdAt:serverTimestamp() });
+    await addDoc(collection(db,'boxes'),{ name, createdAt:serverTimestamp() });
     document.getElementById('newBoxName').value='';
-    document.getElementById('newBoxLoc' ).value='';
-    toast('Box added!','ok');
+    toast('Location added!','ok');
   } catch(err) { toast('Failed: '+err.message,'err'); }
 };
 
 window.deleteBox = async function(id) {
-  if (!confirm('Delete this box? Parts assigned to it will remain but lose the box reference.')) return;
-  try { await deleteDoc(doc(db,'boxes',id)); toast('Box deleted.','ok'); }
+  if (!confirm('Delete this location? Parts assigned to it will remain but lose the location reference.')) return;
+  try { await deleteDoc(doc(db,'boxes',id)); toast('Location deleted.','ok'); }
   catch(err) { toast('Delete failed: '+err.message,'err'); }
 };
+
+async function seedDefaultLocations() {
+  const snap = await getDocs(collection(db,'boxes'));
+  if (!snap.empty) return;
+  const defaults = ['Shop','Storage 1','Storage 2','Van 1','Van 2'];
+  for (const name of defaults) {
+    await addDoc(collection(db,'boxes'),{ name, createdAt:serverTimestamp() });
+  }
+}
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.body.style.overflow='hidden'; }
