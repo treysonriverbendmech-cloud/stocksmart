@@ -611,9 +611,8 @@
       <div id="qtyPulledBySection" class="hidden" style="text-align:left;margin-top:14px">
         <div class="fgroup" style="margin-bottom:10px">
           <label class="flabel">Pulled by <span style="color:var(--red)">*</span></label>
-          <select id="qtyPulledBy" class="fselect">
-            <option value="">Select tech…</option>
-          </select>
+          <input id="qtyPulledBy" class="finput" type="text" list="techDatalist" placeholder="Type or select tech name…" autocomplete="off">
+          <datalist id="techDatalist"></datalist>
         </div>
         <div class="fgroup">
           <label class="flabel">Job / Reference <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
@@ -1255,9 +1254,10 @@ window.openQty = function(partId, type) {
   const jobRef    = document.getElementById('qtyJobRef');
   if (type==='use') {
     pbSection.classList.remove('hidden');
-    pbSel.innerHTML = '<option value="">Select tech…</option>';
+    const dl = document.getElementById('techDatalist');
+    dl.innerHTML = '';
     settings.techs.forEach(t => {
-      const o = document.createElement('option'); o.value=o.textContent=t; pbSel.appendChild(o);
+      const o = document.createElement('option'); o.value = t; dl.appendChild(o);
     });
     pbSel.value=''; jobRef.value='';
   } else {
@@ -1277,8 +1277,8 @@ window.confirmQty = async function() {
   const p = parts.find(i=>i.id===partId); if(!p) return;
   // Enforce pulled-by for use transactions
   if (type==='use') {
-    const pulledBy = document.getElementById('qtyPulledBy').value;
-    if (!pulledBy) { toast('Please select who is pulling this part','err'); document.getElementById('qtyPulledBy').focus(); return; }
+    const pulledBy = document.getElementById('qtyPulledBy').value.trim();
+    if (!pulledBy) { toast('Enter who is pulling this part','err'); document.getElementById('qtyPulledBy').focus(); return; }
     const jobRef = document.getElementById('qtyJobRef').value.trim();
     const newQty = Math.max(0, currentQty - qtyDelta);
     try {
