@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0a0b0f">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Partlocker">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="manifest" href="/manifest.json">
   <title>Partlocker</title>
   <style>
     :root {
@@ -282,6 +285,34 @@
       .frow3 { grid-template-columns: 1fr 1fr; }
       .header-stats { display: none; }
     }
+
+    /* ── Mobile hamburger menu ── */
+    .hamburger {
+      display: none; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); width: 38px; height: 38px; cursor: pointer;
+      align-items: center; justify-content: center; color: var(--text);
+      flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+    }
+    .nav-dropdown {
+      position: fixed; top: 61px; right: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); z-index: 500;
+      min-width: 210px; overflow: hidden; padding: 6px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+      border-radius: var(--radius-sm); font-size: 15px; font-weight: 600;
+      color: var(--text); background: none; border: none; width: 100%;
+      cursor: pointer; text-align: left; transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-item:hover { background: var(--surface2); }
+    .nav-item.nav-primary { color: var(--accent); }
+    .nav-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    @media (max-width: 640px) {
+      .header-desktop-btns { display: none !important; }
+      .hamburger { display: flex; }
+    }
   </style>
 </head>
 <body>
@@ -302,18 +333,39 @@
       <div class="hstat warn hidden" id="statLowWrap"><strong id="statLow">0</strong>Low Stock</div>
     </div>
     <div class="header-right">
-      <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
-      <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
-      <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
-      </button>
-      <button class="btn btn-primary" onclick="openAdd()">
-        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-        Add Part
+      <div class="header-desktop-btns" style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
+        <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
+        <button class="btn btn-ghost btn-sm" onclick="openTransfer()" title="Transfer">🔄 Transfer</button>
+        <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="btn btn-primary" onclick="openAdd()">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Add Part
+        </button>
+      </div>
+      <!-- Mobile hamburger -->
+      <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
   </div>
 </header>
+
+<!-- Mobile nav dropdown -->
+<div class="nav-dropdown hidden" id="navDropdown">
+  <button class="nav-item nav-primary" onclick="openAdd();closeNav()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add Part
+  </button>
+  <div class="nav-divider"></div>
+  <button class="nav-item" onclick="openReceipt();closeNav()">📋 Scan Receipt</button>
+  <button class="nav-item" onclick="openReports();closeNav()">📊 Reports</button>
+  <button class="nav-item" onclick="openTransfer();closeNav()">🔄 Transfer Inventory</button>
+  <div class="nav-divider"></div>
+  <button class="nav-item" onclick="openSettings();closeNav()">⚙ Settings</button>
+</div>
 
 <!-- ═══════ MAIN ═══════ -->
 <main class="main">
@@ -415,9 +467,9 @@
       <!-- Location + Box # -->
       <div class="frow">
         <div class="fgroup">
-          <label class="flabel">Location</label>
+          <label class="flabel">Location <span style="color:var(--red)">*</span></label>
           <select id="fBoxSel" class="fselect">
-            <option value="">No location</option>
+            <option value="">Select location…</option>
           </select>
         </div>
         <div class="fgroup">
@@ -603,16 +655,73 @@
       <button class="stab" onclick="switchReportTab('usage')">Usage Log</button>
     </div>
     <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn btn-ghost btn-sm" onclick="downloadReorderCSV()">⬇ Download CSV</button>
+      </div>
       <div id="reorderContent"></div>
     </div>
     <div class="stab-panel" id="rTabUsage" style="padding-top:16px">
-      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-        <label class="flabel" style="margin:0;white-space:nowrap">Filter by tech:</label>
-        <select id="usageTechFilter" class="filter-sel" style="flex:1" onchange="renderUsageReport()">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <select id="usageTechFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderUsageReport()">
           <option value="">All Techs</option>
         </select>
+        <select id="usageLocFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderUsageReport()">
+          <option value="">All Locations</option>
+        </select>
+        <input type="date" id="usageDateFrom" class="finput" style="flex:1;min-width:120px" onchange="renderUsageReport()" title="From date">
+        <input type="date" id="usageDateTo" class="finput" style="flex:1;min-width:120px" onchange="renderUsageReport()" title="To date">
+        <button class="btn btn-ghost btn-sm" onclick="downloadUsageCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="usageContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ TRANSFER MODAL ═══════ -->
+<div id="transferModal" class="overlay hidden" onclick="overlayClick(event,'transferModal')">
+  <div class="sheet" onclick="event.stopPropagation()" style="max-width:480px">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">🔄 Transfer Inventory</span>
+      <button class="close-x" onclick="closeModal('transferModal')">✕</button>
+    </div>
+    <div class="form-section">
+      <div class="fgroup">
+        <label class="flabel">Part <span style="color:var(--red)">*</span></label>
+        <select id="xfrPart" class="fselect" onchange="onXfrPartChange()">
+          <option value="">Select part…</option>
+        </select>
+      </div>
+      <div id="xfrPartInfo" class="hidden" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:var(--text-muted)"></div>
+      <div class="frow">
+        <div class="fgroup">
+          <label class="flabel">From Location <span style="color:var(--red)">*</span></label>
+          <select id="xfrFrom" class="fselect">
+            <option value="">Select location…</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label class="flabel">To Location <span style="color:var(--red)">*</span></label>
+          <select id="xfrTo" class="fselect">
+            <option value="">Select location…</option>
+          </select>
+        </div>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Transferred by <span style="color:var(--red)">*</span></label>
+        <select id="xfrTech" class="fselect">
+          <option value="">Select tech…</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Notes <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
+        <input id="xfrNotes" class="finput" type="text" placeholder="Job # or reason for transfer">
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">This moves the part's location to the selected destination. Quantity stays the same.</p>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeModal('transferModal')">Cancel</button>
+        <button class="btn btn-primary btn-lg" style="flex:2" onclick="confirmTransfer()">🔄 Confirm Transfer</button>
+      </div>
     </div>
   </div>
 </div>
@@ -623,6 +732,14 @@
 <input type="file" id="receiptFileIn" accept="image/*" style="display:none" onchange="onReceiptFile(event)">
 <input type="file" id="receiptCamIn" accept="image/*" capture="environment" style="display:none" onchange="onReceiptFile(event)">
 
+<script>
+// Register service worker for PWA install support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  });
+}
+</script>
 <script type="module">
 // ─── Firebase ─────────────────────────────────────────────────────────────────
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -852,7 +969,7 @@ function resetForm() {
 function populateBoxSelect() {
   const sel = document.getElementById('fBoxSel');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">No location</option>';
+  sel.innerHTML = '<option value="">Select location…</option>';
   boxes.forEach(b => {
     const o = document.createElement('option');
     o.value = b.id; o.textContent = b.name;
@@ -976,6 +1093,7 @@ window.saveItem = async function() {
   if (!name) { toast('Part name is required','err'); document.getElementById('fName').focus(); return; }
   const kw = document.getElementById('fKeywords').value.split(',').map(s=>s.trim()).filter(Boolean);
   const boxId = document.getElementById('fBoxSel').value;
+  if (!boxId) { toast('Location is required','err'); document.getElementById('fBoxSel').focus(); return; }
   const box = boxes.find(b=>b.id===boxId);
   const boxNumber = document.getElementById('fBoxNum').value.trim();
   const data = {
@@ -1197,7 +1315,13 @@ window.resetCat = function(cat) {
 
 window.saveSettings = async function() {
   try {
-    await setDoc(doc(db,'settings','app'), { subcategories: settings.subcategories });
+    await setDoc(doc(db,'settings','app'), {
+      subcategories: settings.subcategories,
+      companyName: settings.companyName,
+      appSubtitle: settings.appSubtitle,
+      logoUrl: settings.logoUrl,
+      techs: settings.techs
+    });
     toast('Settings saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
 };
@@ -1498,51 +1622,7 @@ function renderReorderList() {
     </div>`).join('');
 }
 
-function populateUsageTechFilter() {
-  const sel=document.getElementById('usageTechFilter');
-  const cur=sel.value;
-  sel.innerHTML='<option value="">All Techs</option>';
-  settings.techs.forEach(t=>{
-    const o=document.createElement('option'); o.value=o.textContent=t;
-    if(t===cur) o.selected=true;
-    sel.appendChild(o);
-  });
-}
-
-window.renderUsageReport = async function() {
-  const el=document.getElementById('usageContent');
-  el.innerHTML='<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
-  const techFilter=document.getElementById('usageTechFilter')?.value||'';
-  const useTxns=transactions.filter(t=>t.type==='use'&&(!techFilter||t.pulledBy===techFilter));
-  if (!useTxns.length) {
-    el.innerHTML='<div class="report-empty">No usage transactions yet.</div>'; return;
-  }
-  // Group by location
-  const byLoc={};
-  useTxns.forEach(t=>{
-    const loc=t.locationName||'No Location';
-    if(!byLoc[loc]) byLoc[loc]=[];
-    byLoc[loc].push(t);
-  });
-  el.innerHTML=Object.entries(byLoc).map(([loc,txns])=>`
-    <div class="report-section">
-      <div class="report-section-title">📍 ${xss(loc)}</div>
-      ${txns.map(t=>{
-        const d=t.createdAt?.toDate?.();
-        const dateStr=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
-        return `<div class="report-row">
-          <div>
-            <div class="report-row-name">${xss(t.partName)}</div>
-            <div class="report-row-meta">${xss(t.partNumber||'')} · ${xss(t.jobRef||'No job ref')}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-weight:700;color:var(--text)">Qty: ${t.quantity}</div>
-            <div class="report-row-meta">${xss(t.pulledBy||'Unknown')} · ${dateStr}</div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`).join('');
-};
+// (populateUsageTechFilter and renderUsageReport defined below with full filter support)
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.body.style.overflow='hidden'; }
@@ -1563,6 +1643,209 @@ function xss(s) {
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ─── Mobile hamburger ─────────────────────────────────────────────────────────
+window.toggleNav = function() {
+  document.getElementById('navDropdown').classList.toggle('hidden');
+};
+window.closeNav = function() {
+  document.getElementById('navDropdown').classList.add('hidden');
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('#hamburgerBtn') && !e.target.closest('#navDropdown')) {
+    const dd = document.getElementById('navDropdown');
+    if (dd) dd.classList.add('hidden');
+  }
+});
+
+// ─── Transfer Inventory ───────────────────────────────────────────────────────
+window.openTransfer = function() {
+  // Populate part select (sorted by name)
+  const pSel = document.getElementById('xfrPart');
+  pSel.innerHTML = '<option value="">Select part…</option>';
+  [...parts].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    const loc = boxes.find(b=>b.id===p.boxId);
+    o.textContent = `${p.name}  (Qty: ${p.quantity||0}${loc?' · '+loc.name:''})`;
+    pSel.appendChild(o);
+  });
+  // Populate location selects
+  ['xfrFrom','xfrTo'].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">Select location…</option>';
+    boxes.forEach(b => {
+      const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; sel.appendChild(o);
+    });
+  });
+  // Populate tech select
+  const tSel = document.getElementById('xfrTech');
+  tSel.innerHTML = '<option value="">Select tech…</option>';
+  settings.techs.forEach(t => {
+    const o = document.createElement('option'); o.value = o.textContent = t; tSel.appendChild(o);
+  });
+  document.getElementById('xfrPartInfo').classList.add('hidden');
+  document.getElementById('xfrNotes').value = '';
+  showModal('transferModal');
+};
+
+window.onXfrPartChange = function() {
+  const partId = document.getElementById('xfrPart').value;
+  const info   = document.getElementById('xfrPartInfo');
+  if (!partId) { info.classList.add('hidden'); return; }
+  const p   = parts.find(i=>i.id===partId); if(!p) return;
+  const loc = boxes.find(b=>b.id===p.boxId);
+  info.classList.remove('hidden');
+  info.innerHTML = `<strong>${xss(p.name)}</strong> &nbsp;·&nbsp; Qty: <strong>${p.quantity||0}</strong> &nbsp;·&nbsp; Current location: <strong>${loc?xss(loc.name):'No location'}</strong>`;
+  if (p.boxId) document.getElementById('xfrFrom').value = p.boxId;
+};
+
+window.confirmTransfer = async function() {
+  const partId = document.getElementById('xfrPart').value;
+  const fromId = document.getElementById('xfrFrom').value;
+  const toId   = document.getElementById('xfrTo').value;
+  const tech   = document.getElementById('xfrTech').value;
+  const notes  = document.getElementById('xfrNotes').value.trim();
+  if (!partId) { toast('Select a part','err'); return; }
+  if (!fromId) { toast('Select the source location','err'); return; }
+  if (!toId)   { toast('Select the destination location','err'); return; }
+  if (fromId === toId) { toast('From and To locations must be different','err'); return; }
+  if (!tech)   { toast('Select who is doing the transfer','err'); return; }
+  const p      = parts.find(i=>i.id===partId); if(!p) return;
+  const fromBox = boxes.find(b=>b.id===fromId);
+  const toBox   = boxes.find(b=>b.id===toId);
+  try {
+    await updateDoc(doc(db,'parts',partId), {
+      boxId: toId, boxName: toBox?toBox.name:null, updatedAt: serverTimestamp()
+    });
+    await addDoc(collection(db,'transactions'), {
+      type:'transfer', partId, partName:p.name, partNumber:p.partNumber||'',
+      quantity:p.quantity||0,
+      fromLocationId:fromId, fromLocationName:fromBox?fromBox.name:'',
+      toLocationId:toId, toLocationName:toBox?toBox.name:'',
+      transferredBy:tech, notes:notes||null, createdAt:serverTimestamp()
+    });
+    toast(`Moved ${xss(p.name)} → ${toBox?toBox.name:''}`, 'ok');
+    closeModal('transferModal');
+  } catch(err) { toast('Transfer failed: '+err.message,'err'); }
+};
+
+// ─── Usage report with location + date filters ────────────────────────────────
+function populateUsageTechFilter() {
+  const sel=document.getElementById('usageTechFilter');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All Techs</option>';
+  settings.techs.forEach(t=>{
+    const o=document.createElement('option'); o.value=o.textContent=t;
+    if(t===cur) o.selected=true;
+    sel.appendChild(o);
+  });
+  // Populate location filter
+  const locSel = document.getElementById('usageLocFilter');
+  const curLoc = locSel.value;
+  locSel.innerHTML = '<option value="">All Locations</option>';
+  boxes.forEach(b => {
+    const o = document.createElement('option'); o.value = b.name; o.textContent = b.name;
+    if (b.name === curLoc) o.selected = true;
+    locSel.appendChild(o);
+  });
+}
+
+window.renderUsageReport = async function() {
+  const el=document.getElementById('usageContent');
+  el.innerHTML='<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
+  const techFilter = document.getElementById('usageTechFilter')?.value||'';
+  const locFilter  = document.getElementById('usageLocFilter')?.value||'';
+  const dateFrom   = document.getElementById('usageDateFrom')?.value;
+  const dateTo     = document.getElementById('usageDateTo')?.value;
+  let useTxns = transactions.filter(t=>t.type==='use');
+  if (techFilter) useTxns = useTxns.filter(t=>t.pulledBy===techFilter);
+  if (locFilter)  useTxns = useTxns.filter(t=>t.locationName===locFilter);
+  if (dateFrom) {
+    const from = new Date(dateFrom+'T00:00:00');
+    useTxns = useTxns.filter(t=>{ const d=t.createdAt?.toDate?.(); return d&&d>=from; });
+  }
+  if (dateTo) {
+    const to = new Date(dateTo+'T23:59:59');
+    useTxns = useTxns.filter(t=>{ const d=t.createdAt?.toDate?.(); return d&&d<=to; });
+  }
+  if (!useTxns.length) {
+    el.innerHTML='<div class="report-empty">No usage transactions match the current filters.</div>'; return;
+  }
+  const byLoc={};
+  useTxns.forEach(t=>{
+    const loc=t.locationName||'No Location';
+    if(!byLoc[loc]) byLoc[loc]=[];
+    byLoc[loc].push(t);
+  });
+  el.innerHTML=Object.entries(byLoc).map(([loc,txns])=>`
+    <div class="report-section">
+      <div class="report-section-title">📍 ${xss(loc)}</div>
+      ${txns.map(t=>{
+        const d=t.createdAt?.toDate?.();
+        const dateStr=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
+        return `<div class="report-row">
+          <div>
+            <div class="report-row-name">${xss(t.partName)}</div>
+            <div class="report-row-meta">${xss(t.partNumber||'')}${t.jobRef?' · '+xss(t.jobRef):''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;color:var(--text)">Qty: ${t.quantity}</div>
+            <div class="report-row-meta">${xss(t.pulledBy||'Unknown')} · ${dateStr}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+};
+
+// ─── CSV Downloads ────────────────────────────────────────────────────────────
+function csvEscape(v) {
+  const s = String(v||'').replace(/"/g,'""');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+}
+function downloadCSV(filename, rows) {
+  const blob = new Blob([rows.join('\n')], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href:url, download:filename });
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+
+window.downloadUsageCSV = function() {
+  const techFilter = document.getElementById('usageTechFilter')?.value||'';
+  const locFilter  = document.getElementById('usageLocFilter')?.value||'';
+  const dateFrom   = document.getElementById('usageDateFrom')?.value;
+  const dateTo     = document.getElementById('usageDateTo')?.value;
+  let txns = transactions.filter(t=>t.type==='use');
+  if (techFilter) txns = txns.filter(t=>t.pulledBy===techFilter);
+  if (locFilter)  txns = txns.filter(t=>t.locationName===locFilter);
+  if (dateFrom) { const from=new Date(dateFrom+'T00:00:00'); txns=txns.filter(t=>{const d=t.createdAt?.toDate?.();return d&&d>=from;}); }
+  if (dateTo)   { const to  =new Date(dateTo  +'T23:59:59'); txns=txns.filter(t=>{const d=t.createdAt?.toDate?.();return d&&d<=to;}); }
+  const rows = [['Date','Pulled By','Part Name','Part #','Qty','Location','Job Ref'].map(csvEscape).join(',')];
+  txns.forEach(t=>{
+    const d=t.createdAt?.toDate?.();
+    const dateStr=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+    rows.push([dateStr,t.pulledBy||'',t.partName||'',t.partNumber||'',t.quantity||0,t.locationName||'',t.jobRef||''].map(csvEscape).join(','));
+  });
+  if (rows.length===1) { toast('No data to export','err'); return; }
+  downloadCSV(`usage-report-${new Date().toISOString().slice(0,10)}.csv`, rows);
+  toast('CSV downloaded!','ok');
+};
+
+window.downloadReorderCSV = function() {
+  const low = parts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
+  const out = parts.filter(p=>(parseInt(p.quantity)||0)===0);
+  const all = [...new Set([...out,...low])];
+  if (!all.length) { toast('No low stock items to export','err'); return; }
+  const rows = [['Location','Part Name','Part #','Qty','Min Qty','Status'].map(csvEscape).join(',')];
+  all.forEach(p=>{
+    const qty=parseInt(p.quantity)||0;
+    const status=qty===0?'Out of Stock':'Low Stock';
+    rows.push([p.boxName||'No Location',p.name||'',p.partNumber||'',qty,p.minQuantity||0,status].map(csvEscape).join(','));
+  });
+  downloadCSV(`reorder-list-${new Date().toISOString().slice(0,10)}.csv`, rows);
+  toast('CSV downloaded!','ok');
+};
 </script>
 </body>
 </html>
