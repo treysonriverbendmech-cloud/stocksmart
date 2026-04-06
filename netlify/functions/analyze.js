@@ -12,26 +12,36 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: 'ANTHROPIC_API_KEY not set' }) };
   }
 
-  let imageBase64, mediaType;
+  let imageBase64, mediaType, mode;
   try {
-    ({ imageBase64, mediaType } = JSON.parse(event.body));
+    ({ imageBase64, mediaType, mode } = JSON.parse(event.body));
   } catch (e) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Bad request body: ' + e.message }) };
   }
 
-  const payload = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 512,
-    messages: [{
-      role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 }
-        },
-        {
-          type: 'text',
-          text: `Analyze this inventory item photo for an HVAC contractor's parts inventory system. Respond with ONLY a JSON object, no markdown, no code blocks.
+  // ── Receipt mode prompt ───────────────────────────────────────────────────
+  const receiptPrompt = `You are scanning a supply house receipt for an HVAC contractor's inventory system.
+Extract every line item from this receipt and return ONLY a JSON object, no markdown, no code blocks.
+
+Use exactly this structure:
+{"items":[{"partNumber":"HC21ZE121","name":"Carrier Capacitor 45/5 MFD","quantity":2,"price":12.50,"category":"HVAC","subcategory":"Motors & Compressors","keywords":["capacitor","carrier","45/5"]},{"partNumber":"","name":"1/2 Copper Fitting","quantity":10,"price":1.25,"category":"Plumbing","subcategory":"Pipes & Fittings","keywords":["copper","fitting"]}]}
+
+Rules:
+- Extract the part number exactly as printed (it may be labeled SKU, Item#, Part#, Model, etc.)
+- If no part number is visible for a line, leave partNumber as empty string ""
+- quantity: number of units on that line
+- price: unit price (not extended/total price)
+- category must be one of: HVAC, Plumbing, Electrical, General
+- HVAC subcategories: New Parts, Used Parts, Ductwork & Fittings, Air Distribution Devices, Filters / Air Quality, Motors & Compressors, Refrigerant & Chemicals, Thermostats & Controls, Pipes & Fittings, Other
+- Plumbing subcategories: Pipes & Fittings, Rigging Material, Sealants & Adhesives, Rigging & Strapping, Other
+- Electrical subcategories: Wire / Cables, Conduit & Fittings, Straps & Hanging, Breakers & Panels, Electrical Devices, Junction Boxes, Other
+- General subcategories: Fasteners & Hardware, Safety Equipment, Consumables, Job Supplies, Other
+- keywords: 2-4 search terms for each item
+- Skip tax lines, shipping lines, totals, and header rows — only include actual parts/items
+- If the image is not a receipt or no items are visible, return {"items":[]}`;
+
+  // ── Single part mode prompt ───────────────────────────────────────────────
+  const partPrompt = `Analyze this inventory item photo for an HVAC contractor's parts inventory system. Respond with ONLY a JSON object, no markdown, no code blocks.
 
 Use exactly this structure:
 {"name":"specific part name","category":"HVAC|Plumbing|Electrical|General","subcategory":"subcategory name","keywords":["keyword1","keyword2","keyword3"],"price":0.00,"notes":"brief description of item condition and key features","confidence":85}
@@ -44,7 +54,24 @@ Category and subcategory rules:
 
 Confidence (0-100): how certain you are about the identification. 90+ if very clear, 70-89 if mostly clear, 50-69 if uncertain, below 50 if very unclear.
 Price: estimate fair used/retail value in USD, or 0 if unknown.
-Keywords: 3-6 relevant search terms (brand, model, part number visible in image, material, size, etc.).`
+Keywords: 3-6 relevant search terms (brand, model, part number visible in image, material, size, etc.).`;
+
+  const isReceipt = mode === 'receipt';
+  const maxTokens = isReceipt ? 2048 : 512;
+
+  const payload = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: maxTokens,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 }
+        },
+        {
+          type: 'text',
+          text: isReceipt ? receiptPrompt : partPrompt
         }
       ]
     }]
@@ -67,8 +94,8 @@ Keywords: 3-6 relevant search terms (brand, model, part number visible in image,
       let raw = '';
       res.on('data', (chunk) => { raw += chunk; });
       res.on('end', () => {
-        console.log('Anthropic status:', res.statusCode);
-        console.log('Anthropic response:', raw.slice(0, 300));
+        console.log('Anthropic status:', res.statusCode, '| mode:', mode || 'part');
+        console.log('Anthropic response:', raw.slice(0, 400));
 
         if (res.statusCode !== 200) {
           resolve({ statusCode: 502, body: JSON.stringify({ error: 'Anthropic error', status: res.statusCode, detail: raw }) });

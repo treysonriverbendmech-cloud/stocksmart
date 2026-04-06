@@ -252,6 +252,25 @@
     .toast.ok { border-color: rgba(16,185,129,0.4); color: var(--green); }
     .toast.err { border-color: rgba(239,68,68,0.4); color: var(--red); }
 
+    /* ── Receipt items ── */
+    .receipt-item { display:flex; align-items:flex-start; gap:10px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:6px; }
+    .receipt-item.dup { border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.06); }
+    .receipt-item-info { flex:1; min-width:0; }
+    .receipt-item-name { font-size:14px; font-weight:600; color:var(--text); }
+    .receipt-item-meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+    .dup-badge { font-size:11px; font-weight:600; color:var(--amber); background:var(--amber-dim); border:1px solid rgba(245,158,11,0.3); padding:2px 8px; border-radius:100px; white-space:nowrap; }
+
+    /* ── Reports ── */
+    .report-section { margin-bottom:20px; }
+    .report-section-title { font-size:13px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+    .report-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(37,42,56,0.6); font-size:14px; }
+    .report-row:last-child { border-bottom:none; }
+    .report-row-name { flex:1; color:var(--text); font-weight:500; }
+    .report-row-meta { font-size:12px; color:var(--text-muted); }
+    .report-badge-red { background:var(--red-dim); color:var(--red); border:1px solid rgba(239,68,68,0.25); font-size:12px; font-weight:700; padding:2px 8px; border-radius:100px; }
+    .report-badge-amber { background:var(--amber-dim); color:var(--amber); border:1px solid rgba(245,158,11,0.3); font-size:12px; font-weight:700; padding:2px 8px; border-radius:100px; }
+    .report-empty { text-align:center; padding:32px 16px; color:var(--text-muted); font-size:14px; }
+
     /* ── Category colors ── */
     .cat-hvac { background: rgba(99,102,241,0.15); color: #818cf8; }
     .cat-plumbing { background: rgba(59,130,246,0.15); color: #60a5fa; }
@@ -283,6 +302,8 @@
       <div class="hstat warn hidden" id="statLowWrap"><strong id="statLow">0</strong>Low Stock</div>
     </div>
     <div class="header-right">
+      <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
+      <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
       <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
@@ -449,6 +470,7 @@
     <div class="stabs">
       <button class="stab active" onclick="switchTab('categories')">Categories</button>
       <button class="stab" onclick="switchTab('boxes')">Locations</button>
+      <button class="stab" onclick="switchTab('team')">Team</button>
       <button class="stab" onclick="switchTab('branding')">Branding</button>
     </div>
     <!-- Categories tab -->
@@ -464,6 +486,15 @@
       <div class="add-box-row" style="margin-top:16px">
         <input class="finput" id="newBoxName" placeholder="Location name (e.g. Van 1, Shop)" style="flex:1">
         <button class="btn btn-primary" onclick="addBox()">Add</button>
+      </div>
+    </div>
+    <!-- Team tab -->
+    <div class="stab-panel" id="tabTeam">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Manage your team members. The "Pulled by" field is required when manually removing parts from inventory.</p>
+      <div class="box-list" id="techList"></div>
+      <div class="add-box-row" style="margin-top:16px">
+        <input class="finput" id="newTechName" placeholder="Tech name (e.g. Mike Johnson)" style="flex:1">
+        <button class="btn btn-primary" onclick="addTech()">Add</button>
       </div>
     </div>
     <!-- Branding tab -->
@@ -509,7 +540,20 @@
         <div class="qty-val" id="qtyVal">1</div>
         <button class="qty-step-btn" onclick="stepQty(1)">+</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:4px">
+      <!-- Pulled by — shown only for "use" type -->
+      <div id="qtyPulledBySection" class="hidden" style="text-align:left;margin-top:14px">
+        <div class="fgroup" style="margin-bottom:10px">
+          <label class="flabel">Pulled by <span style="color:var(--red)">*</span></label>
+          <select id="qtyPulledBy" class="fselect">
+            <option value="">Select tech…</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label class="flabel">Job / Reference <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
+          <input id="qtyJobRef" class="finput" type="text" placeholder="Job # or description">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn btn-ghost" style="flex:1" onclick="closeModal('qtyModal')">Cancel</button>
         <button class="btn btn-primary" style="flex:2" id="qtyConfirmBtn" onclick="confirmQty()">Confirm</button>
       </div>
@@ -517,9 +561,67 @@
   </div>
 </div>
 
+<!-- ═══════ RECEIPT MODAL ═══════ -->
+<div id="receiptModal" class="overlay hidden" onclick="overlayClick(event,'receiptModal')">
+  <div class="sheet sheet-wide" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">📋 Scan Receipt</span>
+      <button class="close-x" onclick="closeModal('receiptModal')">✕</button>
+    </div>
+    <div class="form-section">
+      <div class="photo-zone" id="receiptZone" onclick="document.getElementById('receiptFileIn').click()">
+        <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" opacity=".35"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Tap to upload receipt photo</span>
+      </div>
+      <div class="photo-btns" style="margin-top:8px">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('receiptFileIn').click()">⬆ Upload Receipt</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('receiptCamIn').click()">📷 Camera</button>
+        <button class="btn ai-btn btn-sm" id="receiptScanBtn" disabled onclick="scanReceipt()">
+          <span id="receiptScanTxt">✦ Scan with AI</span>
+        </button>
+      </div>
+      <div id="receiptResults" class="hidden" style="margin-top:16px">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Review items below. Uncheck any you don't want to add. <span style="color:var(--amber)">⚠ items</span> may already exist in inventory.</p>
+        <div id="receiptItemList"></div>
+        <button class="btn btn-primary btn-full btn-lg" style="margin-top:14px" onclick="confirmReceiptAdd()">✓ Add Checked Items to Inventory</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ REPORTS MODAL ═══════ -->
+<div id="reportsModal" class="overlay hidden" onclick="overlayClick(event,'reportsModal')">
+  <div class="sheet sheet-wide" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">📊 Reports</span>
+      <button class="close-x" onclick="closeModal('reportsModal')">✕</button>
+    </div>
+    <div class="stabs" style="margin-bottom:0">
+      <button class="stab active" onclick="switchReportTab('reorder')">Reorder List</button>
+      <button class="stab" onclick="switchReportTab('usage')">Usage Log</button>
+    </div>
+    <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
+      <div id="reorderContent"></div>
+    </div>
+    <div class="stab-panel" id="rTabUsage" style="padding-top:16px">
+      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+        <label class="flabel" style="margin:0;white-space:nowrap">Filter by tech:</label>
+        <select id="usageTechFilter" class="filter-sel" style="flex:1" onchange="renderUsageReport()">
+          <option value="">All Techs</option>
+        </select>
+      </div>
+      <div id="usageContent"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Hidden file inputs -->
 <input type="file" id="fileIn" accept="image/*" style="display:none" onchange="onFile(event)">
 <input type="file" id="camIn" accept="image/*" capture="environment" style="display:none" onchange="onFile(event)">
+<input type="file" id="receiptFileIn" accept="image/*" style="display:none" onchange="onReceiptFile(event)">
+<input type="file" id="receiptCamIn" accept="image/*" capture="environment" style="display:none" onchange="onReceiptFile(event)">
 
 <script type="module">
 // ─── Firebase ─────────────────────────────────────────────────────────────────
@@ -553,7 +655,8 @@ const DEFAULT_SUBS = {
 let parts       = [];
 let boxes       = [];
 let filtered    = [];
-let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'' };
+let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'', techs:[] };
+let transactions = [];
 let currentView = 'grid';
 let photoData   = null;
 let editingId   = null;
@@ -573,6 +676,10 @@ onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
   updateBoxFilter(); renderBoxList();
 }, err => { console.error('Firestore boxes:', err); });
 
+onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
+  transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}, err => { console.error('Firestore transactions:', err); });
+
 seedDefaultLocations();
 
 // ─── Load settings ────────────────────────────────────────────────────────────
@@ -590,6 +697,7 @@ async function loadSettings() {
       if (d.companyName)  settings.companyName  = d.companyName;
       if (d.appSubtitle)  settings.appSubtitle  = d.appSubtitle;
       if (d.logoUrl)      settings.logoUrl      = d.logoUrl;
+      if (d.techs)        settings.techs        = d.techs;
     }
   } catch(e) { console.warn('Settings load failed, using defaults'); }
 }
@@ -963,12 +1071,26 @@ window.openQty = function(partId, type) {
   const p = parts.find(i=>i.id===partId); if(!p) return;
   qtyContext = { partId, type, currentQty: parseInt(p.quantity)||0 };
   qtyDelta = 1;
-  document.getElementById('qtyModalTitle').textContent = type==='use' ? '− Use Parts' : '+ Restock Parts';
+  document.getElementById('qtyModalTitle').textContent = type==='use' ? '− Use / Pull Parts' : '+ Restock Parts';
   document.getElementById('qtyModalName').textContent  = p.name;
   document.getElementById('qtyModalSub').textContent   = `Current quantity: ${p.quantity||0}`;
   document.getElementById('qtyVal').textContent        = '1';
-  document.getElementById('qtyConfirmBtn').textContent = type==='use' ? 'Confirm Use' : 'Confirm Restock';
+  document.getElementById('qtyConfirmBtn').textContent = type==='use' ? 'Confirm Pull' : 'Confirm Restock';
   document.getElementById('qtyConfirmBtn').className   = `btn ${type==='use'?'btn-success':'btn-amber'}`;
+  // Show/hide pulled-by section
+  const pbSection = document.getElementById('qtyPulledBySection');
+  const pbSel     = document.getElementById('qtyPulledBy');
+  const jobRef    = document.getElementById('qtyJobRef');
+  if (type==='use') {
+    pbSection.classList.remove('hidden');
+    pbSel.innerHTML = '<option value="">Select tech…</option>';
+    settings.techs.forEach(t => {
+      const o = document.createElement('option'); o.value=o.textContent=t; pbSel.appendChild(o);
+    });
+    pbSel.value=''; jobRef.value='';
+  } else {
+    pbSection.classList.add('hidden');
+  }
   closeModal('detailModal');
   showModal('qtyModal');
 };
@@ -980,30 +1102,56 @@ window.confirmQty = async function() {
   if (!qtyContext) return;
   const { partId, type, currentQty } = qtyContext;
   const p = parts.find(i=>i.id===partId); if(!p) return;
-  const newQty = type==='use' ? Math.max(0, currentQty - qtyDelta) : currentQty + qtyDelta;
-  try {
-    await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
-    await addDoc(collection(db,'transactions'), {
-      partId, partName: p.name, partNumber: p.partNumber||'',
-      type, quantity: qtyDelta, createdAt: serverTimestamp()
-    });
-    toast(type==='use' ? `Used ${qtyDelta} — ${newQty} remaining` : `Restocked +${qtyDelta} — now ${newQty}`,'ok');
-    closeModal('qtyModal');
-  } catch(err) { toast('Update failed: '+err.message,'err'); }
+  // Enforce pulled-by for use transactions
+  if (type==='use') {
+    const pulledBy = document.getElementById('qtyPulledBy').value;
+    if (!pulledBy) { toast('Please select who is pulling this part','err'); document.getElementById('qtyPulledBy').focus(); return; }
+    const jobRef = document.getElementById('qtyJobRef').value.trim();
+    const newQty = Math.max(0, currentQty - qtyDelta);
+    try {
+      await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      await addDoc(collection(db,'transactions'), {
+        partId, partName: p.name, partNumber: p.partNumber||'',
+        type:'use', quantity: qtyDelta, pulledBy, jobRef: jobRef||null,
+        locationId: p.boxId||null, locationName: p.boxName||null,
+        createdAt: serverTimestamp()
+      });
+      toast(`Pulled ${qtyDelta} by ${pulledBy} — ${newQty} remaining`,'ok');
+      closeModal('qtyModal');
+    } catch(err) { toast('Update failed: '+err.message,'err'); }
+  } else {
+    const newQty = currentQty + qtyDelta;
+    try {
+      await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      await addDoc(collection(db,'transactions'), {
+        partId, partName: p.name, partNumber: p.partNumber||'',
+        type:'restock', quantity: qtyDelta, createdAt: serverTimestamp()
+      });
+      toast(`Restocked +${qtyDelta} — now ${newQty}`,'ok');
+      closeModal('qtyModal');
+    } catch(err) { toast('Update failed: '+err.message,'err'); }
+  }
 };
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 window.openSettings = function() {
-  renderCatEditor(); renderBoxList(); loadBrandingForm();
-  document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('active',i===0));
-  document.querySelectorAll('.stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+  renderCatEditor(); renderBoxList(); renderTeamList(); loadBrandingForm();
+  document.querySelectorAll('#settingsModal .stab').forEach((t,i)=>t.classList.toggle('active',i===0));
+  document.querySelectorAll('#settingsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
   showModal('settingsModal');
 };
 
 window.switchTab = function(tab) {
-  const tabs = ['categories','boxes','branding'];
-  document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
-  document.querySelectorAll('.stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
+  const tabs = ['categories','boxes','team','branding'];
+  document.querySelectorAll('#settingsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
+  document.querySelectorAll('#settingsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
+};
+
+window.switchReportTab = function(tab) {
+  const tabs = ['reorder','usage'];
+  document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
+  document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
+  if (tab==='usage') renderUsageReport();
 };
 
 function renderCatEditor() {
@@ -1160,6 +1308,240 @@ window.saveBranding = async function() {
     applyBranding();
     toast('Branding saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
+};
+
+// ─── Team management ─────────────────────────────────────────────────────────
+function renderTeamList() {
+  const el = document.getElementById('techList'); if (!el) return;
+  el.innerHTML = settings.techs.length===0
+    ? '<p style="color:var(--text-muted);font-size:14px">No techs yet. Add one below.</p>'
+    : settings.techs.map((t,i)=>`<div class="box-item">
+        <div class="box-item-info"><div class="box-item-name">👤 ${xss(t)}</div></div>
+        <button class="btn btn-danger btn-sm" onclick="deleteTech(${i})">Delete</button>
+      </div>`).join('');
+}
+
+window.addTech = async function() {
+  const name = document.getElementById('newTechName').value.trim();
+  if (!name) { toast('Tech name is required','err'); return; }
+  if (settings.techs.includes(name)) { toast('That tech already exists','err'); return; }
+  settings.techs = [...settings.techs, name];
+  await saveTeamSettings();
+  document.getElementById('newTechName').value='';
+  renderTeamList();
+};
+
+window.deleteTech = async function(idx) {
+  if (!confirm(`Remove ${settings.techs[idx]} from the team list?`)) return;
+  settings.techs = settings.techs.filter((_,i)=>i!==idx);
+  await saveTeamSettings();
+  renderTeamList();
+};
+
+async function saveTeamSettings() {
+  try {
+    await setDoc(doc(db,'settings','app'), {
+      subcategories: settings.subcategories,
+      companyName: settings.companyName, appSubtitle: settings.appSubtitle,
+      logoUrl: settings.logoUrl, techs: settings.techs
+    });
+    toast('Team saved!','ok');
+  } catch(err) { toast('Save failed: '+err.message,'err'); }
+}
+
+// ─── Receipt scanning ─────────────────────────────────────────────────────────
+let receiptPhotoData = null;
+let receiptItems     = [];
+
+window.openReceipt = function() {
+  receiptPhotoData = null; receiptItems = [];
+  const zone = document.getElementById('receiptZone');
+  zone.className='photo-zone';
+  zone.innerHTML=`<svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24" opacity=".35"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>Tap to upload receipt photo</span>`;
+  document.getElementById('receiptScanBtn').disabled=true;
+  document.getElementById('receiptScanTxt').textContent='✦ Scan with AI';
+  document.getElementById('receiptResults').classList.add('hidden');
+  showModal('receiptModal');
+};
+
+window.onReceiptFile = async function(e) {
+  const file = e.target.files[0]; if(!file) return;
+  e.target.value=''; toast('Processing receipt…');
+  receiptPhotoData = await compress(file, 1200, 0.88);
+  const zone = document.getElementById('receiptZone');
+  zone.className='photo-zone loaded'; zone.innerHTML=`<img src="${receiptPhotoData}" alt="receipt">`;
+  document.getElementById('receiptScanBtn').disabled=false;
+  toast('Receipt ready — tap Scan with AI','ok');
+};
+
+window.scanReceipt = async function() {
+  if (!receiptPhotoData) return;
+  const btn=document.getElementById('receiptScanBtn'); btn.disabled=true;
+  document.getElementById('receiptScanTxt').textContent='Scanning…';
+  try {
+    const res = await fetch('/.netlify/functions/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: receiptPhotoData.split(',')[1], mediaType: receiptPhotoData.split(';')[0].slice(5), mode:'receipt' })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error||'Scan failed');
+    receiptItems = (json.items||[]).map((item,i) => {
+      // Check for duplicates by part number
+      const dup = item.partNumber
+        ? parts.find(p => p.partNumber && p.partNumber.toLowerCase()===item.partNumber.toLowerCase())
+        : null;
+      return { ...item, _id:i, _checked:true, _dup: dup||null };
+    });
+    renderReceiptItems();
+    document.getElementById('receiptResults').classList.remove('hidden');
+    toast(`Found ${receiptItems.length} item${receiptItems.length!==1?'s':''}!`,'ok');
+  } catch(err) {
+    toast('Scan failed: '+err.message,'err');
+    document.getElementById('receiptScanTxt').textContent='✦ Scan with AI';
+  } finally { btn.disabled=false; }
+};
+
+function renderReceiptItems() {
+  const el=document.getElementById('receiptItemList');
+  if (!receiptItems.length) { el.innerHTML='<p style="color:var(--text-muted);font-size:14px">No items found. Try a clearer photo.</p>'; return; }
+  el.innerHTML = receiptItems.map(item=>`
+    <div class="receipt-item ${item._dup?'dup':''}">
+      <input type="checkbox" id="rc_${item._id}" ${item._checked?'checked':''} onchange="toggleReceiptItem(${item._id})" style="margin-top:2px;width:16px;height:16px;cursor:pointer;flex-shrink:0">
+      <div class="receipt-item-info">
+        <div class="receipt-item-name">${xss(item.name||'Unknown Item')} ${item._dup?`<span class="dup-badge">⚠ Possible Duplicate</span>`:''}</div>
+        <div class="receipt-item-meta">
+          ${item.partNumber?`Part #: <strong>${xss(item.partNumber)}</strong> · `:''}
+          Qty: <strong>${item.quantity||1}</strong> ·
+          Price: <strong>$${(+(item.price||0)).toFixed(2)}</strong>
+          ${item.category?` · ${xss(item.category)}`:''}
+          ${item._dup?`<br><span style="color:var(--amber)">Matches: ${xss(item._dup.name)} (${xss(item._dup.partNumber||'no part#')})</span>`:''}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+window.toggleReceiptItem = function(id) {
+  const item = receiptItems.find(i=>i._id===id);
+  if (item) item._checked = !item._checked;
+};
+
+window.confirmReceiptAdd = async function() {
+  const toAdd = receiptItems.filter(i=>i._checked);
+  if (!toAdd.length) { toast('No items checked','err'); return; }
+  let added=0;
+  for (const item of toAdd) {
+    try {
+      const data = {
+        name: item.name||'Unknown Item',
+        partNumber: item.partNumber||genPartNum(),
+        category: item.category||'General',
+        subcategory: item.subcategory||'',
+        price: +(item.price||0),
+        quantity: +(item.quantity||1),
+        minQuantity: 0, keywords: item.keywords||[],
+        notes: item.notes||'Added via receipt scan',
+        boxId:null, boxName:null, boxNumber:null, photo:null,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        source:'receipt'
+      };
+      await addDoc(collection(db,'parts'), data);
+      await addDoc(collection(db,'transactions'),{
+        type:'add', partName:data.name, partNumber:data.partNumber,
+        quantity:data.quantity, source:'receipt', createdAt:serverTimestamp()
+      });
+      added++;
+    } catch(e) { console.error(e); }
+  }
+  toast(`Added ${added} part${added!==1?'s':''} from receipt!`,'ok');
+  closeModal('receiptModal');
+};
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+window.openReports = function() {
+  renderReorderList();
+  populateUsageTechFilter();
+  renderUsageReport();
+  document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',i===0));
+  document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+  showModal('reportsModal');
+};
+
+function renderReorderList() {
+  const el=document.getElementById('reorderContent');
+  const low = parts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
+  const out  = parts.filter(p=>(parseInt(p.quantity)||0)===0);
+  if (!low.length && !out.length) {
+    el.innerHTML='<div class="report-empty">✅ All parts are sufficiently stocked!</div>'; return;
+  }
+  // Group by location
+  const byLoc = {};
+  [...out,...low.filter(p=>(parseInt(p.quantity)||0)>0)].forEach(p=>{
+    const loc = p.boxName||'No Location';
+    if (!byLoc[loc]) byLoc[loc]=[];
+    byLoc[loc].push(p);
+  });
+  el.innerHTML = Object.entries(byLoc).map(([loc,items])=>`
+    <div class="report-section">
+      <div class="report-section-title">📍 ${xss(loc)}</div>
+      ${items.map(p=>{
+        const qty=parseInt(p.quantity)||0;
+        const badge=qty===0
+          ? `<span class="report-badge-red">OUT OF STOCK</span>`
+          : `<span class="report-badge-amber">Low: ${qty} / min ${p.minQuantity}</span>`;
+        return `<div class="report-row">
+          <div class="report-row-name">${xss(p.name)}</div>
+          <div class="report-row-meta">${xss(p.partNumber||'')}</div>
+          ${badge}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+function populateUsageTechFilter() {
+  const sel=document.getElementById('usageTechFilter');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All Techs</option>';
+  settings.techs.forEach(t=>{
+    const o=document.createElement('option'); o.value=o.textContent=t;
+    if(t===cur) o.selected=true;
+    sel.appendChild(o);
+  });
+}
+
+window.renderUsageReport = async function() {
+  const el=document.getElementById('usageContent');
+  el.innerHTML='<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
+  const techFilter=document.getElementById('usageTechFilter')?.value||'';
+  const useTxns=transactions.filter(t=>t.type==='use'&&(!techFilter||t.pulledBy===techFilter));
+  if (!useTxns.length) {
+    el.innerHTML='<div class="report-empty">No usage transactions yet.</div>'; return;
+  }
+  // Group by location
+  const byLoc={};
+  useTxns.forEach(t=>{
+    const loc=t.locationName||'No Location';
+    if(!byLoc[loc]) byLoc[loc]=[];
+    byLoc[loc].push(t);
+  });
+  el.innerHTML=Object.entries(byLoc).map(([loc,txns])=>`
+    <div class="report-section">
+      <div class="report-section-title">📍 ${xss(loc)}</div>
+      ${txns.map(t=>{
+        const d=t.createdAt?.toDate?.();
+        const dateStr=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
+        return `<div class="report-row">
+          <div>
+            <div class="report-row-name">${xss(t.partName)}</div>
+            <div class="report-row-meta">${xss(t.partNumber||'')} · ${xss(t.jobRef||'No job ref')}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;color:var(--text)">Qty: ${t.quantity}</div>
+            <div class="report-row-meta">${xss(t.pulledBy||'Unknown')} · ${dateStr}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
 };
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
