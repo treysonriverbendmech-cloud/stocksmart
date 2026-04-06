@@ -448,16 +448,23 @@
           </select>
         </div>
       </div>
-      <!-- Unit tracking section — auto-shown when a refrigerant or chemical subcategory is selected -->
-      <div id="unitTrackSection" class="hidden" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div>
-            <div id="unitTrackLabel" style="font-size:13px;font-weight:700;color:var(--text)">🧊 Track by Pound</div>
-            <div style="font-size:11px;color:var(--text-muted)">Each container is its own entry</div>
-          </div>
-          <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-            <button type="button" id="unitBtnLbs" onclick="setTrackUnit('lbs')" style="padding:5px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:background .15s;background:transparent;color:var(--text)">lbs</button>
-            <button type="button" id="unitBtnOz"  onclick="setTrackUnit('oz')"  style="padding:5px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:background .15s;background:transparent;color:var(--text)">oz</button>
+      <!-- Toggle 1: Track by contents (manual on/off) -->
+      <div style="display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;user-select:none" onclick="toggleUnitTrack()">
+        <div id="unitToggleBg" style="width:44px;height:24px;border-radius:12px;background:var(--border);position:relative;flex-shrink:0;transition:background .2s">
+          <div id="unitToggleBall" style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">⚖️ Track by Contents</div>
+          <div style="font-size:11px;color:var(--text-muted)">Track lbs or oz remaining — not just container count</div>
+        </div>
+      </div>
+      <!-- Toggle 2: lbs / oz + container size (shown when toggle 1 is on) -->
+      <div id="unitTrackSection" class="hidden" style="background:var(--surface2);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Unit</div>
+          <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+            <button type="button" id="unitBtnLbs" onclick="setUnit('lbs');event.stopPropagation()" style="padding:6px 18px;font-size:13px;font-weight:700;border:none;cursor:pointer;transition:background .15s;background:var(--accent);color:#fff">lbs</button>
+            <button type="button" id="unitBtnOz"  onclick="setUnit('oz');event.stopPropagation()"  style="padding:6px 18px;font-size:13px;font-weight:700;border:none;cursor:pointer;transition:background .15s;background:transparent;color:var(--text)">oz</button>
           </div>
         </div>
         <div class="fgroup">
@@ -1713,27 +1720,38 @@ function xss(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── Unit tracking (lbs for refrigerants, oz for chemicals) ──────────────────
-window.setTrackUnit = function(unit) {
+// ─── Unit tracking (manual toggles) ──────────────────────────────────────────
+// Toggle 1: turn contents-tracking on/off
+window.toggleUnitTrack = function() {
+  trackUnit = trackUnit ? null : 'lbs'; // default to lbs when turning on
+  updateUnitTrackUI();
+};
+
+// Toggle 2: switch between lbs and oz (only when tracking is on)
+window.setUnit = function(unit) {
+  if (!trackUnit) return;
   trackUnit = unit;
   updateUnitTrackUI();
 };
 
 function updateUnitTrackUI() {
-  const section   = document.getElementById('unitTrackSection');
-  const qtyLbl    = document.getElementById('fQtyLabel');
-  const minLbl    = document.getElementById('fMinQtyLabel');
-  const priceLbl  = document.getElementById('fPriceLabel');
-  const trackLbl  = document.getElementById('unitTrackLabel');
-  const sizeLbl   = document.getElementById('containerSizeLabel');
-  const btnLbs    = document.getElementById('unitBtnLbs');
-  const btnOz     = document.getElementById('unitBtnOz');
+  const section  = document.getElementById('unitTrackSection');
+  const toggleBg = document.getElementById('unitToggleBg');
+  const toggleBl = document.getElementById('unitToggleBall');
+  const qtyLbl   = document.getElementById('fQtyLabel');
+  const minLbl   = document.getElementById('fMinQtyLabel');
+  const priceLbl = document.getElementById('fPriceLabel');
+  const sizeLbl  = document.getElementById('containerSizeLabel');
+  const btnLbs   = document.getElementById('unitBtnLbs');
+  const btnOz    = document.getElementById('unitBtnOz');
   if (!section) return;
   if (trackUnit) {
+    // Toggle ON
     section.classList.remove('hidden');
+    if (toggleBg) toggleBg.style.background = 'var(--accent)';
+    if (toggleBl) toggleBl.style.transform  = 'translateX(20px)';
     const isLbs = trackUnit === 'lbs';
     const u = trackUnit;
-    if (trackLbl) trackLbl.textContent = isLbs ? '🧊 Track by Pound (Refrigerant)' : '🧪 Track by Ounce (Chemical)';
     if (sizeLbl)  sizeLbl.textContent  = `Full Container Size (${u})`;
     if (qtyLbl)   qtyLbl.textContent   = `Remaining (${u})`;
     if (minLbl)   minLbl.textContent   = `Min ${isLbs?'Lbs':'Oz'} ⚠`;
@@ -1741,7 +1759,10 @@ function updateUnitTrackUI() {
     if (btnLbs) { btnLbs.style.background = isLbs  ? 'var(--accent)' : 'transparent'; btnLbs.style.color = isLbs  ? '#fff' : 'var(--text)'; }
     if (btnOz)  { btnOz.style.background  = !isLbs ? 'var(--accent)' : 'transparent'; btnOz.style.color  = !isLbs ? '#fff' : 'var(--text)'; }
   } else {
+    // Toggle OFF
     section.classList.add('hidden');
+    if (toggleBg) toggleBg.style.background = 'var(--border)';
+    if (toggleBl) toggleBl.style.transform  = '';
     if (qtyLbl)   qtyLbl.textContent   = 'Quantity';
     if (minLbl)   minLbl.textContent   = 'Min Qty ⚠';
     if (priceLbl) priceLbl.textContent = 'Price ($)';
@@ -1751,21 +1772,12 @@ function updateUnitTrackUI() {
 }
 
 window.onSubcatChange = function() {
+  // No auto-activation — just pre-fill cylinder size hint for known refrigerant types
   const sub = document.getElementById('fSubcat').value;
-  if (REFRIGERANT_TYPES.has(sub)) {
-    trackUnit = 'lbs';
-    updateUnitTrackUI();
+  if (trackUnit && REFRIGERANT_TYPES.has(sub)) {
     const size = REFRIGERANT_SIZES[sub];
     document.getElementById('fCylSize').value = size;
     if (!editingId) document.getElementById('fQty').value = size;
-  } else if (CHEMICAL_TYPES.has(sub)) {
-    trackUnit = 'oz';
-    updateUnitTrackUI();
-    document.getElementById('fCylSize').value = '';
-    if (!editingId) document.getElementById('fQty').value = 1;
-  } else {
-    trackUnit = null;
-    updateUnitTrackUI();
   }
 };
 
