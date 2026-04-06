@@ -1244,8 +1244,7 @@ window.openQty = function(partId, type) {
   document.getElementById('qtyModalSub').textContent   = p.isRefrigerant
     ? `${p.quantity||0} lbs remaining of ${p.cylinderSize||'?'} lb cylinder`
     : `Current quantity: ${p.quantity||0}`;
-  document.getElementById('qtyVal').textContent        = '1';
-  document.getElementById('qtyValUnit').textContent    = unitLabel;
+  document.getElementById('qtyVal').innerHTML = '1<span id="qtyValUnit" style="font-size:14px;font-weight:500;color:var(--text-muted)">' + unitLabel + '</span>';
   document.getElementById('qtyConfirmBtn').textContent = type==='use'
     ? (p.isRefrigerant ? 'Log Pounds Used' : 'Confirm Pull')
     : (p.isRefrigerant ? 'Update Cylinder' : 'Confirm Restock');
@@ -1269,7 +1268,8 @@ window.openQty = function(partId, type) {
 };
 window.stepQty = function(delta) {
   qtyDelta = Math.max(1, qtyDelta + delta);
-  document.getElementById('qtyVal').childNodes[0].textContent = qtyDelta;
+  const valEl = document.getElementById('qtyVal');
+  if (valEl.childNodes[0]) valEl.childNodes[0].textContent = qtyDelta;
 };
 window.confirmQty = async function() {
   if (!qtyContext) return;
