@@ -444,23 +444,40 @@
         </div>
         <div class="fgroup">
           <label class="flabel">Subcategory</label>
-          <select id="fSubcat" class="fselect">
+          <select id="fSubcat" class="fselect" onchange="onSubcatChange()">
             <option value="">Select subcategory…</option>
           </select>
+        </div>
+      </div>
+      <!-- Refrigerant by-pound toggle -->
+      <div style="display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;user-select:none" onclick="toggleRefrig()">
+        <div id="refrigToggleBg" style="width:44px;height:24px;border-radius:12px;background:var(--border);position:relative;flex-shrink:0;transition:background .2s">
+          <div id="refrigToggleBall" style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">🧊 Track by Pound (Refrigerant)</div>
+          <div style="font-size:11px;color:var(--text-muted)">Quantity = lbs remaining. Each cylinder is its own entry.</div>
+        </div>
+      </div>
+      <!-- Cylinder size row (shown when refrigerant mode on) -->
+      <div id="cylSizeRow" class="hidden">
+        <div class="fgroup">
+          <label class="flabel">Full Cylinder Size (lbs)</label>
+          <input id="fCylSize" class="finput" type="number" min="1" placeholder="e.g. 25" oninput="onCylSizeInput()">
         </div>
       </div>
       <!-- Price / Qty / Min Qty -->
       <div class="frow3">
         <div class="fgroup">
-          <label class="flabel">Price ($)</label>
+          <label class="flabel" id="fPriceLabel">Price ($)</label>
           <input id="fPrice" class="finput" type="number" min="0" step="0.01" placeholder="0.00">
         </div>
         <div class="fgroup">
-          <label class="flabel">Quantity</label>
+          <label class="flabel" id="fQtyLabel">Quantity</label>
           <input id="fQty" class="finput" type="number" min="0" value="1">
         </div>
         <div class="fgroup">
-          <label class="flabel">Min Qty ⚠</label>
+          <label class="flabel" id="fMinQtyLabel">Min Qty ⚠</label>
           <input id="fMinQty" class="finput" type="number" min="0" placeholder="0">
         </div>
       </div>
@@ -589,7 +606,7 @@
       <div class="qty-modal-sub" id="qtyModalSub"></div>
       <div class="qty-stepper">
         <button class="qty-step-btn" onclick="stepQty(-1)">−</button>
-        <div class="qty-val" id="qtyVal">1</div>
+        <div class="qty-val" id="qtyVal" style="display:flex;align-items:baseline;gap:4px">1<span id="qtyValUnit" style="font-size:14px;font-weight:500;color:var(--text-muted)"></span></div>
         <button class="qty-step-btn" onclick="stepQty(1)">+</button>
       </div>
       <!-- Pulled by — shown only for "use" type -->
@@ -762,11 +779,18 @@ const db  = getFirestore(app);
 
 // ─── Default subcategories ────────────────────────────────────────────────────
 const DEFAULT_SUBS = {
-  HVAC:       ['New Parts','Used Parts','Ductwork & Fittings','Air Distribution Devices','Filters / Air Quality','Motors & Compressors','Refrigerant & Chemicals','Thermostats & Controls','Pipes & Fittings','Other'],
+  HVAC:       ['New Parts','Used Parts','Ductwork & Fittings','Air Distribution Devices','Filters / Air Quality','Motors & Compressors','R-410A','R-22','R-32','R-454B','R-407C','R-404A','Thermostats & Controls','Pipes & Fittings','Other'],
   Plumbing:   ['Pipes & Fittings','Rigging Material','Sealants & Adhesives','Rigging & Strapping','Other'],
   Electrical: ['Wire / Cables','Conduit & Fittings','Straps & Hanging','Breakers & Panels','Electrical Devices','Junction Boxes','Other'],
   General:    ['Fasteners & Hardware','Safety Equipment','Consumables','Job Supplies','Other']
 };
+
+// ─── Refrigerant cylinder sizes (lbs per full cylinder) ──────────────────────
+const REFRIGERANT_SIZES = {
+  'R-410A': 25, 'R-22': 30, 'R-32': 20,
+  'R-454B': 20, 'R-407C': 25, 'R-404A': 24
+};
+const REFRIGERANT_TYPES = new Set(Object.keys(REFRIGERANT_SIZES));
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let parts       = [];
@@ -774,11 +798,12 @@ let boxes       = [];
 let filtered    = [];
 let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'', techs:[] };
 let transactions = [];
-let currentView = 'grid';
-let photoData   = null;
-let editingId   = null;
-let qtyContext  = null; // { partId, type, currentQty }
-let qtyDelta    = 1;
+let currentView  = 'grid';
+let photoData    = null;
+let editingId    = null;
+let qtyContext   = null; // { partId, type, currentQty }
+let qtyDelta     = 1;
+let isRefrigMode = false; // refrigerant by-pound tracking toggle
 
 const CAT_CLASS = { HVAC:'cat-hvac', Plumbing:'cat-plumbing', Electrical:'cat-electrical', General:'cat-general' };
 
@@ -905,7 +930,9 @@ function renderGrid() {
         </div>
         ${p.subcategory?`<div style="margin-bottom:6px"><span class="tag" style="background:var(--surface3);color:var(--text-dim);font-size:11px">${xss(p.subcategory)}</span></div>`:''}
         <div class="card-meta">
-          <span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>
+          ${p.isRefrigerant
+            ? `<span class="meta-item">🧊 <strong>${p.quantity||0} lbs</strong>${p.cylinderSize?' / '+p.cylinderSize+' lb cyl':''}</span>`
+            : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
           ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
@@ -945,6 +972,10 @@ window.openAdd = function(id=null) {
       document.getElementById('fSubcat').value = p.subcategory || '';
       document.getElementById('fBoxSel').value = p.boxId || '';
       document.getElementById('fBoxNum').value = p.boxNumber || '';
+      // Restore refrigerant state
+      isRefrigMode = !!p.isRefrigerant;
+      document.getElementById('fCylSize').value = p.cylinderSize || '';
+      updateRefrigUI();
       if (p.photo) { photoData = p.photo; setZonePhoto(p.photo); }
       else { photoData = null; resetZone(); }
     }
@@ -963,6 +994,8 @@ function resetForm() {
   document.getElementById('fMinQty').value='';
   document.getElementById('fBoxSel').value='';
   document.getElementById('fBoxNum').value='';
+  document.getElementById('fCylSize').value='';
+  isRefrigMode = false; updateRefrigUI();
   photoData=null; editingId=null; resetZone(); hideConfidence();
 }
 
@@ -1096,20 +1129,23 @@ window.saveItem = async function() {
   if (!boxId) { toast('Location is required','err'); document.getElementById('fBoxSel').focus(); return; }
   const box = boxes.find(b=>b.id===boxId);
   const boxNumber = document.getElementById('fBoxNum').value.trim();
+  const cylSize = parseInt(document.getElementById('fCylSize').value)||0;
   const data = {
     name,
-    category:    document.getElementById('fCat'    ).value,
-    subcategory: document.getElementById('fSubcat' ).value,
-    price:       parseFloat(document.getElementById('fPrice').value)||0,
-    quantity:    parseInt(  document.getElementById('fQty'  ).value)||0,
-    minQuantity: parseInt(  document.getElementById('fMinQty').value)||0,
-    keywords:    kw,
-    boxId:       boxId || null,
-    boxName:     box ? box.name : null,
-    boxNumber:   boxNumber || null,
-    notes:       document.getElementById('fNotes').value.trim(),
-    photo:       photoData || null,
-    updatedAt:   serverTimestamp(),
+    category:      document.getElementById('fCat'    ).value,
+    subcategory:   document.getElementById('fSubcat' ).value,
+    price:         parseFloat(document.getElementById('fPrice').value)||0,
+    quantity:      parseInt(  document.getElementById('fQty'  ).value)||0,
+    minQuantity:   parseInt(  document.getElementById('fMinQty').value)||0,
+    keywords:      kw,
+    boxId:         boxId || null,
+    boxName:       box ? box.name : null,
+    boxNumber:     boxNumber || null,
+    notes:         document.getElementById('fNotes').value.trim(),
+    photo:         photoData || null,
+    isRefrigerant: isRefrigMode,
+    cylinderSize:  isRefrigMode ? cylSize : null,
+    updatedAt:     serverTimestamp(),
   };
   try {
     if (editingId) {
@@ -1148,17 +1184,27 @@ window.openDetail = function(id) {
     <div class="dfields">
       <div class="drow">
         <div>
-          <div class="dfield-label">Quantity</div>
+          <div class="dfield-label">${p.isRefrigerant?'🧊 Remaining (lbs)':'Quantity'}</div>
           <div class="dfield-val" style="display:flex;align-items:center;gap:8px">
-            <strong style="font-size:20px">${p.quantity||0}</strong>
-            ${isLow?`<span class="low-stock">⚠ Low Stock</span>`:''}
+            <strong style="font-size:20px">${p.quantity||0}${p.isRefrigerant?' lbs':''}</strong>
+            ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
           </div>
         </div>
         <div>
-          <div class="dfield-label">Min Quantity</div>
-          <div class="dfield-val">${p.minQuantity||'—'}</div>
+          <div class="dfield-label">${p.isRefrigerant?'Cylinder Size':'Min Quantity'}</div>
+          <div class="dfield-val">${p.isRefrigerant?(p.cylinderSize?p.cylinderSize+' lbs':'—'):(p.minQuantity||'—')}</div>
         </div>
       </div>
+      ${p.isRefrigerant&&p.cylinderSize?`
+      <div>
+        <div class="dfield-label">Cylinder Fill</div>
+        <div class="dfield-val" style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:10px;background:var(--surface3);border-radius:5px;overflow:hidden">
+            <div style="height:100%;border-radius:5px;background:${(parseInt(p.quantity)||0)/p.cylinderSize>0.5?'var(--green)':'var(--amber)'};width:${Math.round(Math.min(100,((parseInt(p.quantity)||0)/p.cylinderSize)*100))}%"></div>
+          </div>
+          <span style="font-size:13px;font-weight:700;min-width:40px">${Math.round(((parseInt(p.quantity)||0)/p.cylinderSize)*100)}%</span>
+        </div>
+      </div>`:''}
       ${box?`<div class="drow">
         <div><div class="dfield-label">Location</div><div class="dfield-val">📍 ${xss(box.name)}</div></div>
         ${p.boxNumber?`<div><div class="dfield-label">Box #</div><div class="dfield-val">📦 ${xss(p.boxNumber)}</div></div>`:'<div></div>'}
@@ -1167,8 +1213,8 @@ window.openDetail = function(id) {
       ${p.notes?`<div><div class="dfield-label">Notes</div><div class="dfield-val" style="line-height:1.6">${xss(p.notes)}</div></div>`:''}
     </div>
     <div class="detail-actions">
-      <button class="btn btn-success" onclick="openQty('${id}','use')">− Use</button>
-      <button class="btn btn-amber" onclick="openQty('${id}','add')">+ Restock</button>
+      <button class="btn btn-success" onclick="openQty('${id}','use')">${p.isRefrigerant?'🧊 Use Lbs':'− Use'}</button>
+      <button class="btn btn-amber" onclick="openQty('${id}','add')">${p.isRefrigerant?'+ Refill':'+ Restock'}</button>
       <button class="btn btn-ghost" onclick="closeModal('detailModal');openAdd('${id}')">✏ Edit</button>
       <button class="btn btn-danger" onclick="deleteItem('${id}')">🗑</button>
     </div>`;
@@ -1187,13 +1233,22 @@ window.deleteItem = async function(id) {
 // ─── Qty / Transaction modal ──────────────────────────────────────────────────
 window.openQty = function(partId, type) {
   const p = parts.find(i=>i.id===partId); if(!p) return;
-  qtyContext = { partId, type, currentQty: parseInt(p.quantity)||0 };
+  qtyContext = { partId, type, currentQty: parseInt(p.quantity)||0, isRefrigerant: !!p.isRefrigerant };
   qtyDelta = 1;
-  document.getElementById('qtyModalTitle').textContent = type==='use' ? '− Use / Pull Parts' : '+ Restock Parts';
+  const unit = p.isRefrigerant ? 'lbs' : '';
+  const unitLabel = p.isRefrigerant ? ' lbs' : '';
+  document.getElementById('qtyModalTitle').textContent = type==='use'
+    ? (p.isRefrigerant ? '🧊 Log Refrigerant Use' : '− Use / Pull Parts')
+    : (p.isRefrigerant ? '🧊 Refill / Restock Cylinder' : '+ Restock Parts');
   document.getElementById('qtyModalName').textContent  = p.name;
-  document.getElementById('qtyModalSub').textContent   = `Current quantity: ${p.quantity||0}`;
+  document.getElementById('qtyModalSub').textContent   = p.isRefrigerant
+    ? `${p.quantity||0} lbs remaining of ${p.cylinderSize||'?'} lb cylinder`
+    : `Current quantity: ${p.quantity||0}`;
   document.getElementById('qtyVal').textContent        = '1';
-  document.getElementById('qtyConfirmBtn').textContent = type==='use' ? 'Confirm Pull' : 'Confirm Restock';
+  document.getElementById('qtyValUnit').textContent    = unitLabel;
+  document.getElementById('qtyConfirmBtn').textContent = type==='use'
+    ? (p.isRefrigerant ? 'Log Pounds Used' : 'Confirm Pull')
+    : (p.isRefrigerant ? 'Update Cylinder' : 'Confirm Restock');
   document.getElementById('qtyConfirmBtn').className   = `btn ${type==='use'?'btn-success':'btn-amber'}`;
   // Show/hide pulled-by section
   const pbSection = document.getElementById('qtyPulledBySection');
@@ -1214,7 +1269,7 @@ window.openQty = function(partId, type) {
 };
 window.stepQty = function(delta) {
   qtyDelta = Math.max(1, qtyDelta + delta);
-  document.getElementById('qtyVal').textContent = qtyDelta;
+  document.getElementById('qtyVal').childNodes[0].textContent = qtyDelta;
 };
 window.confirmQty = async function() {
   if (!qtyContext) return;
@@ -1643,6 +1698,58 @@ function xss(s) {
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ─── Refrigerant tracking ─────────────────────────────────────────────────────
+window.toggleRefrig = function() {
+  isRefrigMode = !isRefrigMode;
+  updateRefrigUI();
+};
+
+function updateRefrigUI() {
+  const bg   = document.getElementById('refrigToggleBg');
+  const ball = document.getElementById('refrigToggleBall');
+  const cylRow = document.getElementById('cylSizeRow');
+  const qtyLbl  = document.getElementById('fQtyLabel');
+  const minLbl  = document.getElementById('fMinQtyLabel');
+  const priceLbl = document.getElementById('fPriceLabel');
+  if (!bg) return;
+  if (isRefrigMode) {
+    bg.style.background   = 'var(--accent)';
+    ball.style.transform  = 'translateX(20px)';
+    cylRow.classList.remove('hidden');
+    if (qtyLbl)   qtyLbl.innerHTML   = '🧊 Remaining (lbs)';
+    if (minLbl)   minLbl.innerHTML   = 'Min Lbs ⚠';
+    if (priceLbl) priceLbl.textContent = 'Price ($ / lb)';
+  } else {
+    bg.style.background   = 'var(--border)';
+    ball.style.transform  = '';
+    cylRow.classList.add('hidden');
+    if (qtyLbl)   qtyLbl.textContent  = 'Quantity';
+    if (minLbl)   minLbl.textContent  = 'Min Qty ⚠';
+    if (priceLbl) priceLbl.textContent = 'Price ($)';
+    document.getElementById('fCylSize').value = '';
+  }
+}
+
+window.onSubcatChange = function() {
+  const sub = document.getElementById('fSubcat').value;
+  if (REFRIGERANT_TYPES.has(sub)) {
+    isRefrigMode = true;
+    updateRefrigUI();
+    const size = REFRIGERANT_SIZES[sub];
+    document.getElementById('fCylSize').value = size;
+    // Only pre-fill qty if not editing (don't overwrite actual remaining qty)
+    if (!editingId) document.getElementById('fQty').value = size;
+  }
+};
+
+window.onCylSizeInput = function() {
+  // If remaining lbs not yet touched, keep it in sync with cylinder size
+  const cylSize = parseInt(document.getElementById('fCylSize').value)||0;
+  if (cylSize > 0 && !editingId) {
+    document.getElementById('fQty').value = cylSize;
+  }
+};
 
 // ─── Mobile hamburger ─────────────────────────────────────────────────────────
 window.toggleNav = function() {
