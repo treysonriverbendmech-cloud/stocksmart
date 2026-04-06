@@ -807,23 +807,6 @@ let isRefrigMode = false; // refrigerant by-pound tracking toggle
 
 const CAT_CLASS = { HVAC:'cat-hvac', Plumbing:'cat-plumbing', Electrical:'cat-electrical', General:'cat-general' };
 
-// ─── Firestore listeners ──────────────────────────────────────────────────────
-onSnapshot(query(collection(db,'parts'), orderBy('createdAt','desc')), snap => {
-  parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  updateStats(); updateBoxFilter(); applyFilters();
-}, err => { console.error('Firestore parts:', err); toast('Firestore error: ' + err.message, 'err'); });
-
-onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
-  boxes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  updateBoxFilter(); renderBoxList();
-}, err => { console.error('Firestore boxes:', err); });
-
-onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
-  transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}, err => { console.error('Firestore transactions:', err); });
-
-seedDefaultLocations();
-
 // ─── Load settings ────────────────────────────────────────────────────────────
 async function loadSettings() {
   try {
@@ -845,6 +828,24 @@ async function loadSettings() {
 }
 await loadSettings();
 applyBranding();
+
+// ─── Firestore listeners (started after all functions defined) ────────────────
+// Placed here so Firebase callbacks never fire before applyFilters etc. are ready
+onSnapshot(query(collection(db,'parts'), orderBy('createdAt','desc')), snap => {
+  parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  updateStats(); updateBoxFilter(); applyFilters();
+}, err => { console.error('Firestore parts:', err); toast('Firestore error: ' + err.message, 'err'); });
+
+onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
+  boxes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  updateBoxFilter(); renderBoxList();
+}, err => { console.error('Firestore boxes:', err); });
+
+onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
+  transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}, err => { console.error('Firestore transactions:', err); });
+
+seedDefaultLocations();
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 function updateStats() {
