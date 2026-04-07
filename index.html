@@ -620,6 +620,9 @@
           <button class="btn btn-ghost btn-sm" style="flex:1" onclick="saveHCPApiKey()">💾 Save Key</button>
           <button class="btn btn-primary btn-sm" style="flex:2" id="hcpSyncBtn" onclick="runHCPSync()">🔄 Sync Now</button>
         </div>
+        <div style="margin-top:8px">
+          <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px;opacity:0.7" onclick="resetHCPSyncDate()">↩ Reset Sync Date (re-scan last 90 days)</button>
+        </div>
         <div id="hcpSyncStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
       </div>
       <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:6px">📄 Pricebook Import</div>
@@ -2098,6 +2101,15 @@ async function loadHCPMeta() {
   } catch(e) {}
   return {};
 }
+
+window.resetHCPSyncDate = async function() {
+  try {
+    await setDoc(doc(db,'settings','hcp'), { lastSyncAt: null }, { merge: true });
+    const statusEl = document.getElementById('hcpSyncStatus');
+    statusEl.innerHTML = '<span style="color:var(--green)">✓ Sync date reset — next sync will scan the last 90 days</span>';
+    toast('Sync date cleared — hit Sync Now to re-scan 90 days','ok');
+  } catch(e) { toast('Reset failed: '+e.message,'err'); }
+};
 
 window.runHCPSync = async function() {
   const btn = document.getElementById('hcpSyncBtn');
