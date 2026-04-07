@@ -799,6 +799,10 @@
         </div>
       </div>
       <div class="fgroup">
+        <label class="flabel">Qty to Transfer <span style="color:var(--red)">*</span></label>
+        <input id="xfrQty" class="finput" type="number" min="1" value="1" style="max-width:140px">
+      </div>
+      <div class="fgroup">
         <label class="flabel">Transferred by <span style="color:var(--red)">*</span></label>
         <select id="xfrTech" class="fselect">
           <option value="">Select tech…</option>
@@ -808,7 +812,7 @@
         <label class="flabel">Notes <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
         <input id="xfrNotes" class="finput" type="text" placeholder="Job # or reason for transfer">
       </div>
-      <p style="font-size:12px;color:var(--text-muted)">This moves the part's location to the selected destination. Quantity stays the same.</p>
+      <p style="font-size:12px;color:var(--text-muted)">Deducts from source location and adds to destination. If the part already exists there, qty is added to it.</p>
       <div style="display:flex;gap:10px;margin-top:4px">
         <button class="btn btn-ghost" style="flex:1" onclick="closeModal('transferModal')">Cancel</button>
         <button class="btn btn-primary btn-lg" style="flex:2" onclick="confirmTransfer()">🔄 Confirm Transfer</button>
@@ -2271,9 +2275,13 @@ window.onXfrPartChange = function() {
   if (!partId) { info.classList.add('hidden'); return; }
   const p   = parts.find(i=>i.id===partId); if(!p) return;
   const loc = boxes.find(b=>b.id===p.boxId);
+  const avail = p.quantity || 0;
   info.classList.remove('hidden');
-  info.innerHTML = `<strong>${xss(p.name)}</strong> &nbsp;·&nbsp; Qty: <strong>${p.quantity||0}</strong> &nbsp;·&nbsp; Current location: <strong>${loc?xss(loc.name):'No location'}</strong>`;
+  info.innerHTML = `<strong>${xss(p.name)}</strong> &nbsp;·&nbsp; Available: <strong>${avail}</strong> &nbsp;·&nbsp; From: <strong>${loc?xss(loc.name):'No location'}</strong>`;
   if (p.boxId) document.getElementById('xfrFrom').value = p.boxId;
+  const qtyEl = document.getElementById('xfrQty');
+  qtyEl.max = avail;
+  if (parseInt(qtyEl.value) > avail) qtyEl.value = avail > 0 ? avail : 1;
 };
 
 window.confirmTransfer = async function() {
@@ -2282,26 +2290,59 @@ window.confirmTransfer = async function() {
   const toId   = document.getElementById('xfrTo').value;
   const tech   = document.getElementById('xfrTech').value;
   const notes  = document.getElementById('xfrNotes').value.trim();
-  if (!partId) { toast('Select a part','err'); return; }
-  if (!fromId) { toast('Select the source location','err'); return; }
-  if (!toId)   { toast('Select the destination location','err'); return; }
+  const xfrQty = parseInt(document.getElementById('xfrQty').value) || 0;
+  if (!partId)    { toast('Select a part','err'); return; }
+  if (!fromId)    { toast('Select the source location','err'); return; }
+  if (!toId)      { toast('Select the destination location','err'); return; }
   if (fromId === toId) { toast('From and To locations must be different','err'); return; }
-  if (!tech)   { toast('Select who is doing the transfer','err'); return; }
-  const p      = parts.find(i=>i.id===partId); if(!p) return;
+  if (!tech)      { toast('Select who is doing the transfer','err'); return; }
+  if (xfrQty < 1) { toast('Qty must be at least 1','err'); return; }
+  const p = parts.find(i=>i.id===partId); if(!p) return;
+  const srcQty = p.quantity || 0;
+  if (xfrQty > srcQty) { toast(`Only ${srcQty} available at source`,'err'); return; }
   const fromBox = boxes.find(b=>b.id===fromId);
   const toBox   = boxes.find(b=>b.id===toId);
   try {
-    await updateDoc(doc(db,'parts',partId), {
-      boxId: toId, boxName: toBox?toBox.name:null, updatedAt: serverTimestamp()
-    });
+    // Deduct from source
+    const newSrcQty = srcQty - xfrQty;
+    await updateDoc(doc(db,'parts',partId), { quantity: newSrcQty, updatedAt: serverTimestamp() });
+
+    // Find existing record for this part at the destination (same partNumber, or same name+category)
+    let destPart = parts.find(i =>
+      i.id !== partId && i.boxId === toId &&
+      ((p.partNumber && i.partNumber && i.partNumber.trim().toLowerCase() === p.partNumber.trim().toLowerCase()) ||
+       (i.name.trim().toLowerCase() === p.name.trim().toLowerCase() && i.category === p.category))
+    );
+
+    if (destPart) {
+      // Add to existing record at destination
+      await updateDoc(doc(db,'parts',destPart.id), {
+        quantity: (destPart.quantity||0) + xfrQty, updatedAt: serverTimestamp()
+      });
+    } else {
+      // Create a new part record at the destination
+      const { id: _id, ...clone } = p;
+      await addDoc(collection(db,'parts'), {
+        ...clone,
+        quantity: xfrQty,
+        boxId: toId,
+        boxName: toBox ? toBox.name : null,
+        minQty: p.minQty || 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    // Log the transaction
     await addDoc(collection(db,'transactions'), {
       type:'transfer', partId, partName:p.name, partNumber:p.partNumber||'',
-      quantity:p.quantity||0,
+      quantity: xfrQty,
       fromLocationId:fromId, fromLocationName:fromBox?fromBox.name:'',
       toLocationId:toId, toLocationName:toBox?toBox.name:'',
       transferredBy:tech, notes:notes||null, createdAt:serverTimestamp()
     });
-    toast(`Moved ${xss(p.name)} → ${toBox?toBox.name:''}`, 'ok');
+
+    toast(`Transferred ${xfrQty}× ${xss(p.name)} → ${toBox?toBox.name:''}`, 'ok');
     closeModal('transferModal');
   } catch(err) { toast('Transfer failed: '+err.message,'err'); }
 };
