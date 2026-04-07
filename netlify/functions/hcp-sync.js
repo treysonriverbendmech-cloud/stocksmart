@@ -59,10 +59,11 @@ exports.handler = async (event) => {
       const meta = data.meta || data.pagination || {};
       totalPages = meta.total_pages || meta.last_page || 1;
 
-      // Capture raw first job from list for debugging
-      if (page === 1 && jobs[0] && !debugInfo.rawFirstJob) {
-        debugInfo.rawFirstJob = JSON.stringify(jobs[0]).substring(0, 1200);
-        debugInfo.firstJobId = jobs[0].id || jobs[0].job_id || 'unknown';
+      // Log pagination info on first page
+      if (page === 1) {
+        debugInfo.totalPages = totalPages;
+        debugInfo.metaSample = JSON.stringify(meta).substring(0, 200);
+        debugInfo.jobsOnPage1 = jobs.length;
       }
 
       // Keep only completed jobs updated since our cutoff
@@ -77,14 +78,12 @@ exports.handler = async (event) => {
       completedJobs = completedJobs.concat(newDone);
       page++;
 
-      // If no jobs on this page matched our date range, stop paginating
-      const anyInRange = jobs.some(j => {
-        const updatedAt = j.updated_at || j.completed_at || j.schedule?.end;
-        return !updatedAt || new Date(updatedAt) > since;
-      });
-      if (!anyInRange) break;
+      // Stop only if jobs are sorted newest-first and oldest on this page is before our cutoff
+      const oldestOnPage = jobs[jobs.length - 1];
+      const oldestDate = oldestOnPage && (oldestOnPage.updated_at || oldestOnPage.completed_at || oldestOnPage.schedule?.end);
+      if (oldestDate && new Date(oldestDate) < since) break;
 
-    } while (page <= totalPages && page <= 10);
+    } while (page <= totalPages && page <= 20); // up to 20 pages = 2000 jobs
 
     // ── 2. Fetch line items via GET /jobs/{id}/line_items ─────────────────────
     const fullJobs = await Promise.all(
