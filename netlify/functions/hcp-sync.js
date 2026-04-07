@@ -32,7 +32,8 @@ exports.handler = async (event) => {
     const debugInfo = {};
 
     // ── 1. Fetch jobs (all statuses, filter to completed ones) ────────────────
-    const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    // First sync: go back 2 years to catch all history. After that, use lastSyncAt.
+    const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 730 * 24 * 60 * 60 * 1000);
 
     let completedJobs = [];
     let page = 1;
@@ -85,21 +86,24 @@ exports.handler = async (event) => {
 
     } while (page <= totalPages && page <= 20); // up to 20 pages = 2000 jobs
 
-    // ── 2. Fetch line items via GET /jobs/{id}/line_items ─────────────────────
-    const fullJobs = await Promise.all(
-      completedJobs.map(async job => {
+    // ── 2. Fetch line items in batches of 5 to avoid timeouts ────────────────
+    const fullJobs = [];
+    const BATCH = 5;
+    for (let i = 0; i < completedJobs.length; i += BATCH) {
+      const chunk = completedJobs.slice(i, i + BATCH);
+      const results = await Promise.all(chunk.map(async job => {
         try {
           const liResp = await fetch(`${HCP_BASE}/jobs/${job.id}/line_items`, { headers });
           if (!liResp.ok) return { ...job, line_items: [] };
           const liData = await liResp.json();
-          // Response shape: { object: "list", data: [...] }
           const lineItems = liData.data || liData.line_items || (Array.isArray(liData) ? liData : []);
           return { ...job, line_items: lineItems };
         } catch(e) {
           return { ...job, line_items: [] };
         }
-      })
-    );
+      }));
+      fullJobs.push(...results);
+    }
 
     // ── 3. Build lookup maps from Partlocker parts ────────────────────────────
     const partsByHcpUuid   = {};

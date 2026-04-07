@@ -12,6 +12,9 @@
 [functions.analyze]
   timeout = 30
 
+[functions.hcp-sync]
+  timeout = 26
+
 [[headers]]
   for = "/*"
   [headers.values]
