@@ -40,7 +40,7 @@ exports.handler = async (event) => {
     let totalPages = 1;
 
     do {
-      const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&sort_direction=desc`;
+      const url = `${HCP_BASE}/jobs?page=${page}&page_size=100&sort_direction=desc`;
       const resp = await fetch(url, { headers });
 
       if (!resp.ok) {
