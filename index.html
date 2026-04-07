@@ -2482,10 +2482,63 @@ window.runHCPSync = async function() {
       return;
     }
 
-    // Store pending deductions in Firestore
+    // Build tech-name → locationId map from approved users
+    const techLocationMap = {};
+    try {
+      const usersSnap = await getDocs(collection(db,'users'));
+      usersSnap.docs.forEach(d => {
+        const u = d.data();
+        if (u.locationId) {
+          // Index by displayName and email (lowercase) for flexible matching
+          if (u.displayName) techLocationMap[u.displayName.trim().toLowerCase()] = { locationId: u.locationId };
+          if (u.email)       techLocationMap[u.email.trim().toLowerCase()]       = { locationId: u.locationId };
+        }
+      });
+      // Also pull location names from boxes
+      Object.keys(techLocationMap).forEach(k => {
+        const box = boxes.find(b => b.id === techLocationMap[k].locationId);
+        if (box) techLocationMap[k].locationName = box.name;
+      });
+    } catch(e) { console.warn('Could not load tech locations:', e.message); }
+
+    // Store pending deductions in Firestore, preferring tech's van location
     const newPending = result.pending || [];
     for (const item of newPending) {
-      await addDoc(collection(db,'hcpPending'), { ...item, createdAt: serverTimestamp() });
+      let finalItem = { ...item };
+
+      // Try to find which location this tech maps to
+      const techNames = (item.tech || '').split(', ');
+      let techLoc = null;
+      for (const name of techNames) {
+        const entry = techLocationMap[name.trim().toLowerCase()];
+        if (entry) { techLoc = entry; break; }
+      }
+
+      if (techLoc) {
+        // Find a record for this same part at the tech's location
+        const vanPart = parts.find(p =>
+          p.boxId === techLoc.locationId &&
+          (
+            (item.hcpUuid    && p.hcpUuid    === item.hcpUuid) ||
+            (item.partNumber && p.partNumber  === item.partNumber) ||
+            p.id === item.partId
+          )
+        );
+        if (vanPart) {
+          finalItem.partId      = vanPart.id;
+          finalItem.partName    = vanPart.name;
+          finalItem.partNumber  = vanPart.partNumber || item.partNumber || '';
+          finalItem.currentQty  = vanPart.quantity || 0;
+          finalItem.locationId  = vanPart.boxId || techLoc.locationId;
+          finalItem.locationName = vanPart.boxName || techLoc.locationName || '';
+        } else {
+          // Tech is mapped but no van stock — note the intended location anyway
+          finalItem.locationId   = techLoc.locationId;
+          finalItem.locationName = techLoc.locationName || '';
+        }
+      }
+
+      await addDoc(collection(db,'hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
     }
 
     // Update lastSyncAt
@@ -2566,6 +2619,7 @@ function renderHCPPendingList() {
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:var(--text);font-size:14px">${xss(item.partName)}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job #${xss(item.jobNumber)} · ${xss(item.tech)} · ${date}</div>
+          ${item.locationName ? `<div style="font-size:11px;color:var(--accent);margin-top:2px">📍 From: ${xss(item.locationName)}</div>` : ''}
         </div>
         ${matchBadge}
       </div>
@@ -2590,12 +2644,13 @@ window.approveHCPDeduction = async function(pendingId) {
     const newQty = Math.max(0, currentQty - item.quantity);
     // Deduct inventory
     await updateDoc(doc(db,'parts',item.partId), { quantity: newQty, updatedAt: serverTimestamp() });
-    // Log transaction
+    // Log transaction — prefer location stored on the pending item (tech's van)
     await addDoc(collection(db,'transactions'), {
       partId: item.partId, partName: item.partName, partNumber: item.partNumber||'',
       type: 'use', quantity: item.quantity,
       pulledBy: item.tech, jobRef: `HCP Job #${item.jobNumber}`,
-      locationId: part?.boxId||null, locationName: part?.boxName||null,
+      locationId:   item.locationId   || part?.boxId   || null,
+      locationName: item.locationName || part?.boxName || null,
       source: 'hcp', hcpJobId: item.jobId,
       createdAt: serverTimestamp()
     });
