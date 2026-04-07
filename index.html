@@ -2165,12 +2165,13 @@ window.runHCPSync = async function() {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
-    const { jobsScanned=0, unmatched=[] } = result;
+    const { jobsScanned=0, unmatched=[], statusesSeen=[] } = result;
+    const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Job statuses seen: ${statusesSeen.join(', ')}</span>` : '';
     const unmatchedNote = unmatched.length > 0
       ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
       : '';
 
-    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>`;
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}`;
 
     loadHCPPending();
     if (newPending.length > 0) {

@@ -37,8 +37,9 @@ exports.handler = async (event) => {
     let totalPages = 1;
 
     do {
-      // Include complete, invoiced, and paid — HCP may use any of these for finished jobs
-      const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&work_status[]=complete&work_status[]=invoiced&work_status[]=paid&sort_direction=desc`;
+      // No work_status filter — fetch all jobs and filter by date client-side
+      // This lets us discover what status values HCP actually uses
+      const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&sort_direction=desc`;
       const resp = await fetch(url, { headers });
 
       if (!resp.ok) {
@@ -158,14 +159,18 @@ exports.handler = async (event) => {
       }
     }
 
+    // Collect unique statuses seen for debugging
+    const statusesSeen = [...new Set(allJobs.map(j => j.work_status || j.status || 'unknown'))];
+
     return {
       statusCode: 200,
       body: JSON.stringify({
-        ok:         true,
-        jobsScanned: allJobs.length,
+        ok:           true,
+        jobsScanned:  allJobs.length,
+        statusesSeen,
         pending,
         unmatched,
-        syncedAt:   new Date().toISOString(),
+        syncedAt:     new Date().toISOString(),
       })
     };
 
