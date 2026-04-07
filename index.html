@@ -835,6 +835,7 @@
     <div class="stabs" style="margin-bottom:0">
       <button class="stab active" onclick="switchReportTab('reorder')">Reorder List</button>
       <button class="stab" onclick="switchReportTab('usage')">Usage Log</button>
+      <button class="stab" onclick="switchReportTab('inventory')">Full Inventory</button>
     </div>
     <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -855,6 +856,25 @@
         <button class="btn btn-ghost btn-sm" onclick="downloadUsageCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="usageContent"></div>
+    </div>
+    <div class="stab-panel" id="rTabInventory" style="padding-top:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <select id="invLocFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderInventoryReport()">
+          <option value="">All Locations</option>
+        </select>
+        <select id="invCatFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderInventoryReport()">
+          <option value="">All Categories</option>
+        </select>
+        <select id="invSortBy" class="filter-sel" style="flex:1;min-width:140px" onchange="renderInventoryReport()">
+          <option value="location">Sort: Location</option>
+          <option value="category">Sort: Category</option>
+          <option value="name">Sort: Name A–Z</option>
+          <option value="qty-low">Sort: Qty Low→High</option>
+          <option value="qty-high">Sort: Qty High→Low</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="downloadInventoryCSV()" style="white-space:nowrap">⬇ CSV</button>
+      </div>
+      <div id="invContent"></div>
     </div>
   </div>
 </div>
@@ -1754,10 +1774,11 @@ window.switchTab = function(tab) {
 };
 
 window.switchReportTab = function(tab) {
-  const tabs = ['reorder','usage'];
+  const tabs = ['reorder','usage','inventory'];
   document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
-  if (tab==='usage') renderUsageReport();
+  if (tab==='usage') { populateUsageTechFilter(); renderUsageReport(); }
+  if (tab==='inventory') { populateInventoryFilters(); renderInventoryReport(); }
 };
 
 function renderCatEditor() {
@@ -2734,12 +2755,19 @@ window.onXfrPartChange = function() {
   const p   = parts.find(i=>i.id===partId); if(!p) return;
   const loc = boxes.find(b=>b.id===p.boxId);
   const avail = p.quantity || 0;
+  const pUnit = p.trackUnit || (p.isRefrigerant ? 'lbs' : null);
+  const cylSize = parseInt(p.containerSize || p.cylinderSize || 0);
   info.classList.remove('hidden');
-  info.innerHTML = `<strong>${xss(p.name)}</strong> &nbsp;·&nbsp; Available: <strong>${avail}</strong> &nbsp;·&nbsp; From: <strong>${loc?xss(loc.name):'No location'}</strong>`;
+  info.innerHTML = `<strong>${xss(p.name)}</strong> &nbsp;·&nbsp; Available: <strong>${avail}${pUnit?' '+pUnit:''}</strong> &nbsp;·&nbsp; From: <strong>${loc?xss(loc.name):'No location'}</strong>`;
   if (p.boxId) document.getElementById('xfrFrom').value = p.boxId;
   const qtyEl = document.getElementById('xfrQty');
   qtyEl.max = avail;
-  if (parseInt(qtyEl.value) > avail) qtyEl.value = avail > 0 ? avail : 1;
+  // Refrigerants default to full cylinder size; regular parts default to 1
+  if (pUnit && cylSize > 0) {
+    qtyEl.value = Math.min(cylSize, avail);
+  } else if (parseInt(qtyEl.value) > avail) {
+    qtyEl.value = avail > 0 ? avail : 1;
+  }
 };
 
 window.confirmTransfer = async function() {
@@ -2904,6 +2932,123 @@ window.downloadUsageCSV = function() {
   });
   if (rows.length===1) { toast('No data to export','err'); return; }
   downloadCSV(`usage-report-${new Date().toISOString().slice(0,10)}.csv`, rows);
+  toast('CSV downloaded!','ok');
+};
+
+// ─── Full Inventory Report ────────────────────────────────────────────────────
+function populateInventoryFilters() {
+  const locSel = document.getElementById('invLocFilter');
+  const catSel = document.getElementById('invCatFilter');
+  const curLoc = locSel.value, curCat = catSel.value;
+  locSel.innerHTML = '<option value="">All Locations</option>';
+  catSel.innerHTML = '<option value="">All Categories</option>';
+  boxes.forEach(b => {
+    const o = document.createElement('option'); o.value = b.name; o.textContent = b.name;
+    if (b.name === curLoc) o.selected = true;
+    locSel.appendChild(o);
+  });
+  const cats = [...new Set(parts.map(p=>p.category).filter(Boolean))].sort();
+  cats.forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c;
+    if (c === curCat) o.selected = true;
+    catSel.appendChild(o);
+  });
+}
+
+window.renderInventoryReport = function() {
+  const el = document.getElementById('invContent');
+  const locFilter = document.getElementById('invLocFilter')?.value || '';
+  const catFilter = document.getElementById('invCatFilter')?.value || '';
+  const sortBy    = document.getElementById('invSortBy')?.value || 'location';
+  let filtered = [...parts];
+  if (locFilter) filtered = filtered.filter(p => (p.boxName||'') === locFilter);
+  if (catFilter) filtered = filtered.filter(p => (p.category||'') === catFilter);
+  if (!filtered.length) {
+    el.innerHTML = '<div class="report-empty">No parts match the current filters.</div>'; return;
+  }
+  // Sort
+  filtered.sort((a,b) => {
+    if (sortBy==='location') return (a.boxName||'').localeCompare(b.boxName||'') || (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='category') return (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='name')     return (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='qty-low')  return (parseInt(a.quantity)||0) - (parseInt(b.quantity)||0);
+    if (sortBy==='qty-high') return (parseInt(b.quantity)||0) - (parseInt(a.quantity)||0);
+    return 0;
+  });
+  // Group by sort key
+  const groupKey = p => sortBy==='location' ? (p.boxName||'No Location') : sortBy==='category' ? (p.category||'Uncategorized') : null;
+  if (groupKey(filtered[0]) !== null) {
+    const groups = {};
+    filtered.forEach(p => { const k=groupKey(p); if(!groups[k]) groups[k]=[]; groups[k].push(p); });
+    el.innerHTML = Object.entries(groups).map(([grp, items]) => `
+      <div class="report-section">
+        <div class="report-section-title">${sortBy==='location'?'📍':'🏷'} ${xss(grp)} <span style="font-size:11px;font-weight:500;color:var(--text-muted)">(${items.length} parts)</span></div>
+        ${items.map(p => {
+          const qty = parseInt(p.quantity)||0;
+          const low = p.minQuantity>0 && qty<=parseInt(p.minQuantity);
+          const out = qty===0;
+          const qtyColor = out?'var(--red)':low?'var(--amber)':'var(--text)';
+          return `<div class="report-row">
+            <div>
+              <div class="report-row-name">${xss(p.name)}</div>
+              <div class="report-row-meta">${xss(p.partNumber||'')}${p.category?' · '+xss(p.category):''}${p.subcategory?' / '+xss(p.subcategory):''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-weight:700;color:${qtyColor}">${qty}${p.trackUnit||p.isRefrigerant?' lbs':''}</div>
+              ${p.price?`<div class="report-row-meta">$${parseFloat(p.price).toFixed(2)}</div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`).join('');
+  } else {
+    el.innerHTML = `<div class="report-section">${filtered.map(p => {
+      const qty = parseInt(p.quantity)||0;
+      const out = qty===0;
+      const low = p.minQuantity>0 && qty<=parseInt(p.minQuantity);
+      const qtyColor = out?'var(--red)':low?'var(--amber)':'var(--text)';
+      return `<div class="report-row">
+        <div>
+          <div class="report-row-name">${xss(p.name)}</div>
+          <div class="report-row-meta">${xss(p.boxName||'No Location')}${p.category?' · '+xss(p.category):''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-weight:700;color:${qtyColor}">${qty}</div>
+          ${p.price?`<div class="report-row-meta">$${parseFloat(p.price).toFixed(2)}</div>`:''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+};
+
+window.downloadInventoryCSV = function() {
+  const locFilter = document.getElementById('invLocFilter')?.value || '';
+  const catFilter = document.getElementById('invCatFilter')?.value || '';
+  const sortBy    = document.getElementById('invSortBy')?.value || 'location';
+  let filtered = [...parts];
+  if (locFilter) filtered = filtered.filter(p => (p.boxName||'') === locFilter);
+  if (catFilter) filtered = filtered.filter(p => (p.category||'') === catFilter);
+  filtered.sort((a,b) => {
+    if (sortBy==='location') return (a.boxName||'').localeCompare(b.boxName||'') || (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='category') return (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='name')     return (a.name||'').localeCompare(b.name||'');
+    if (sortBy==='qty-low')  return (parseInt(a.quantity)||0) - (parseInt(b.quantity)||0);
+    if (sortBy==='qty-high') return (parseInt(b.quantity)||0) - (parseInt(a.quantity)||0);
+    return 0;
+  });
+  if (!filtered.length) { toast('No data to export','err'); return; }
+  const rows = [['Location','Category','Subcategory','Part Name','Part #','Qty','Unit','Min Qty','Cost','HCP UUID'].map(csvEscape).join(',')];
+  filtered.forEach(p => {
+    const pUnit = p.trackUnit || (p.isRefrigerant ? 'lbs' : 'ea');
+    rows.push([
+      p.boxName||'', p.category||'', p.subcategory||'',
+      p.name||'', p.partNumber||'',
+      parseInt(p.quantity)||0, pUnit,
+      p.minQuantity||0,
+      p.price ? parseFloat(p.price).toFixed(2) : '',
+      p.hcpUuid||''
+    ].map(csvEscape).join(','));
+  });
+  downloadCSV(`inventory-${new Date().toISOString().slice(0,10)}.csv`, rows);
   toast('CSV downloaded!','ok');
 };
 
