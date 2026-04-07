@@ -939,6 +939,7 @@ onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), sn
 }, err => { console.error('Firestore transactions:', err); });
 
 seedDefaultLocations();
+loadHCPPending(); // show badge on startup if there are pending deductions
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 function updateStats() {
@@ -2194,12 +2195,12 @@ window.runHCPSync = async function() {
 // Load pending deductions from Firestore
 async function loadHCPPending() {
   try {
-    const snap = await getDocs(query(
-      collection(db,'hcpPending'),
-      where('status','==','pending'),
-      orderBy('completedAt','desc')
-    ));
-    hcpPendingItems = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    // Simple query — no compound index needed. Filter client-side.
+    const snap = await getDocs(collection(db,'hcpPending'));
+    hcpPendingItems = snap.docs
+      .map(d => ({ _id: d.id, ...d.data() }))
+      .filter(i => i.status === 'pending')
+      .sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
     updateHCPBadge();
   } catch(e) { console.warn('loadHCPPending:', e.message); }
 }
