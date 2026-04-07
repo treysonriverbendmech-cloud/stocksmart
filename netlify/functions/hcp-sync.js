@@ -3,9 +3,12 @@
 // creates pending deductions for user approval.
 //
 // Called by: POST /.netlify/functions/hcp-sync
-// Body: { apiKey, lastSyncAt (ISO string, optional) }
+// Body: { apiKey, lastSyncAt (ISO string, optional), parts[] }
 
 const HCP_BASE = 'https://api.housecallpro.com';
+
+// HCP uses "complete unrated" and "complete rated" for finished jobs
+const DONE_STATUSES = new Set(['complete unrated', 'complete rated', 'complete', 'invoiced', 'paid']);
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -26,19 +29,14 @@ exports.handler = async (event) => {
   };
 
   try {
-    const debugInfo = {};
-
-    // ── 1. Fetch recently completed jobs ─────────────────────────────────────
-    // First sync: go back 90 days to catch historical jobs. After that, use lastSyncAt.
+    // ── 1. Fetch jobs (all statuses, filter to completed ones) ────────────────
     const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-    let allJobs = [];
+    let completedJobs = [];
     let page = 1;
     let totalPages = 1;
 
     do {
-      // No work_status filter — fetch all jobs and filter by date client-side
-      // This lets us discover what status values HCP actually uses
       const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&sort_direction=desc`;
       const resp = await fetch(url, { headers });
 
@@ -55,65 +53,66 @@ exports.handler = async (event) => {
       }
 
       const data = await resp.json();
-
-      // Capture raw shape of first job + first line item for debugging
-      if (page === 1) {
-        const firstJob = (data.jobs || data.data || data.results || [])[0];
-        if (firstJob) {
-          debugInfo.firstJobKeys = Object.keys(firstJob);
-          debugInfo.firstJobStatus = firstJob.work_status || firstJob.status || 'unknown';
-          const lineItems = firstJob.line_items || firstJob.materials || firstJob.invoice_items || [];
-          debugInfo.lineItemCount = lineItems.length;
-          debugInfo.firstLineItemKeys = lineItems[0] ? Object.keys(lineItems[0]) : [];
-          debugInfo.firstLineItemSample = lineItems[0] ? JSON.stringify(lineItems[0]).substring(0, 400) : 'none';
-        }
-      }
-
       const jobs = data.jobs || data.data || data.results || [];
       const meta = data.meta || data.pagination || {};
       totalPages = meta.total_pages || meta.last_page || 1;
 
-      // Only include jobs updated after our last sync
-      const newJobs = jobs.filter(j => {
+      // Keep only completed jobs updated since our cutoff
+      const newDone = jobs.filter(j => {
+        const status = (j.work_status || j.status || '').toLowerCase();
+        if (!DONE_STATUSES.has(status)) return false;
         const updatedAt = j.updated_at || j.completed_at || j.schedule?.end;
         if (!updatedAt) return true;
         return new Date(updatedAt) > since;
       });
 
-      allJobs = allJobs.concat(newJobs);
+      completedJobs = completedJobs.concat(newDone);
       page++;
 
-      // Stop if we've gone past jobs updated after lastSync
-      if (newJobs.length < jobs.length) break;
+      // If no jobs on this page matched our date range, stop paginating
+      const anyInRange = jobs.some(j => {
+        const updatedAt = j.updated_at || j.completed_at || j.schedule?.end;
+        return !updatedAt || new Date(updatedAt) > since;
+      });
+      if (!anyInRange) break;
 
-    } while (page <= totalPages && page <= 10); // cap at 10 pages = 1000 jobs
+    } while (page <= totalPages && page <= 10);
 
-    // ── 2. Build lookup map of Partlocker parts by hcpUuid and partNumber ────
-    // Parts are passed in from the client (already loaded in app)
+    // ── 2. Fetch full job details to get line items ───────────────────────────
+    // The list endpoint doesn't include line items — fetch each job individually
+    const fullJobs = await Promise.all(
+      completedJobs.map(async job => {
+        try {
+          const r = await fetch(`${HCP_BASE}/jobs/${job.id}`, { headers });
+          if (!r.ok) return job; // fall back to list data if detail fails
+          return await r.json();
+        } catch { return job; }
+      })
+    );
+
+    // ── 3. Build lookup maps from Partlocker parts ────────────────────────────
     const partsByHcpUuid   = {};
     const partsByPartNumber = {};
     (parts || []).forEach(p => {
-      if (p.hcpUuid)     partsByHcpUuid[p.hcpUuid]         = p;
-      if (p.partNumber)  partsByPartNumber[p.partNumber.trim().toUpperCase()] = p;
+      if (p.hcpUuid)    partsByHcpUuid[p.hcpUuid]                          = p;
+      if (p.partNumber) partsByPartNumber[p.partNumber.trim().toUpperCase()] = p;
     });
 
-    // ── 3. Match line items to Partlocker parts ───────────────────────────────
+    // ── 4. Match line items to Partlocker parts ───────────────────────────────
     const pending   = [];
     const unmatched = [];
 
-    for (const job of allJobs) {
-      const jobNum  = job.job_number || job.id || 'Unknown';
-      const tech    = (job.assigned_employees || []).map(e => e.name || e.full_name || '').filter(Boolean).join(', ') || 'Unknown';
+    for (const job of fullJobs) {
+      const jobNum      = job.job_number || job.id || 'Unknown';
+      const tech        = (job.assigned_employees || []).map(e => e.name || e.full_name || '').filter(Boolean).join(', ') || 'Unknown';
       const completedAt = job.completed_at || job.updated_at || new Date().toISOString();
-
-      const lineItems = job.line_items || job.materials || [];
+      const lineItems   = job.line_items || job.materials || job.invoice_items || [];
 
       for (const item of lineItems) {
         // Skip non-material items (service charges, labor, etc.)
-        const kind = item.kind || item.type || item.line_item_type || '';
-        if (kind && !['material', 'part', 'product', ''].includes(kind.toLowerCase())) continue;
+        const kind = (item.kind || item.type || item.line_item_type || '').toLowerCase();
+        if (kind && !['material', 'part', 'product', 'equipment', ''].includes(kind)) continue;
 
-        // Try matching by HCP pricebook UUID first, then part number
         const materialUuid = item.material_uuid || item.pricebook_material_id ||
                              item.material?.uuid || item.pricebook_item?.uuid || '';
         const partNum      = (item.part_number || item.sku || item.material?.part_number || '').trim().toUpperCase();
@@ -150,7 +149,6 @@ exports.handler = async (event) => {
             status:      'pending',
           });
         } else if (itemName && itemName !== 'Unknown') {
-          // Log unmatched items for review
           unmatched.push({
             jobNumber: jobNum,
             itemName,
@@ -161,19 +159,24 @@ exports.handler = async (event) => {
       }
     }
 
-    // Collect unique statuses seen for debugging
-    const statusesSeen = [...new Set(allJobs.map(j => j.work_status || j.status || 'unknown'))];
+    // Debug: grab first line item sample for troubleshooting
+    const firstJobWithItems = fullJobs.find(j => (j.line_items || j.materials || j.invoice_items || []).length > 0);
+    const sampleLineItem = firstJobWithItems
+      ? (firstJobWithItems.line_items || firstJobWithItems.materials || firstJobWithItems.invoice_items || [])[0]
+      : null;
+
+    const statusesSeen = [...new Set(completedJobs.map(j => j.work_status || j.status || 'unknown'))];
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        ok:           true,
-        jobsScanned:  allJobs.length,
+        ok:          true,
+        jobsScanned: completedJobs.length,
         statusesSeen,
-        debugInfo,
         pending,
         unmatched,
-        syncedAt:     new Date().toISOString(),
+        debugLineItem: sampleLineItem ? JSON.stringify(sampleLineItem).substring(0, 600) : 'no line items found',
+        syncedAt:    new Date().toISOString(),
       })
     };
 

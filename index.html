@@ -2165,9 +2165,9 @@ window.runHCPSync = async function() {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
-    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugInfo={} } = result;
+    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugLineItem='' } = result;
     const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Statuses: ${statusesSeen.join(', ')}</span>` : '';
-    const debugNote = debugInfo.firstJobKeys ? `<br><span style="font-size:10px;color:var(--text-muted)">Job fields: ${(debugInfo.firstJobKeys||[]).join(', ')}<br>Line items: ${debugInfo.lineItemCount} · Fields: ${(debugInfo.firstLineItemKeys||[]).join(', ')}<br>Sample: ${debugInfo.firstLineItemSample||''}</span>` : '';
+    const debugNote = debugLineItem ? `<br><span style="font-size:10px;color:var(--text-muted)">Sample line item: ${xss(debugLineItem)}</span>` : '';
     const unmatchedNote = unmatched.length > 0
       ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
       : '';
