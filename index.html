@@ -1157,9 +1157,15 @@ window.saveUserLocation = async function(uid, locationId) {
 let adminUid = null;
 
 // Handle redirect result from Google sign-in on mobile
-getRedirectResult(auth).catch(e => {
+getRedirectResult(auth).then(result => {
+  // onAuthStateChanged handles the user automatically — nothing to do here
+}).catch(e => {
   if (e && e.code !== 'auth/cancelled-popup-request') {
-    console.warn('Google redirect error:', e.message);
+    console.warn('Google redirect error:', e.code, e.message);
+    // Show the real error so we know what went wrong
+    hideSplash();
+    showLoginScreen(true);
+    setTimeout(() => showAuthError('Google sign-in failed: ' + (e.message || e.code)), 100);
   }
 });
 
