@@ -644,6 +644,14 @@
         </div>
       </div>
       <div id="hcpImportResult" style="margin-top:12px;font-size:13px"></div>
+
+      <!-- One-time price fix for already-imported parts -->
+      <div id="hcpPriceFixSection" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px">🔧 Fix Existing Import Prices</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Updates all previously imported HCP parts to use buy cost instead of sell price. Run once — safe to re-run.</div>
+        <button class="btn btn-ghost" style="width:100%" id="hcpPriceFixBtn" onclick="fixHCPImportPrices()">🔧 Fix Prices on Existing HCP Parts</button>
+        <div id="hcpPriceFixResult" style="margin-top:8px;font-size:13px"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2021,6 +2029,41 @@ window.runHCPImport = async function() {
      <div style="color:var(--text-muted);margin-top:4px">Now add quantities, locations &amp; photos to each part. HCP part numbers are saved for automatic job syncing.</div>`;
   toast(`Imported ${count} parts from HCP!`,'ok');
   hcpParsedRows=[];
+};
+
+window.fixHCPImportPrices = async function() {
+  const btn    = document.getElementById('hcpPriceFixBtn');
+  const result = document.getElementById('hcpPriceFixResult');
+  // Find all HCP-imported parts that have a cost value stored
+  const hcpParts = parts.filter(p => p.importedFrom === 'hcp');
+  if (!hcpParts.length) {
+    result.innerHTML = '<span style="color:var(--text-muted)">No HCP-imported parts found.</span>';
+    return;
+  }
+  btn.textContent = 'Fixing…'; btn.disabled = true;
+  let fixed = 0, skipped = 0, errors = 0;
+  const BATCH = 10;
+  for (let i = 0; i < hcpParts.length; i += BATCH) {
+    const chunk = hcpParts.slice(i, i + BATCH);
+    await Promise.all(chunk.map(async p => {
+      try {
+        const cost = parseFloat(p.cost) || 0;
+        if (cost === 0) { skipped++; return; } // no cost data, skip
+        await updateDoc(doc(db, 'parts', p.id), {
+          price:     cost,               // set price = buy cost
+          sellPrice: parseFloat(p.price) || 0,  // save old sell price for reference
+          updatedAt: serverTimestamp()
+        });
+        fixed++;
+      } catch(e) { errors++; }
+    }));
+    btn.textContent = `Fixing… ${Math.min(i + BATCH, hcpParts.length)}/${hcpParts.length}`;
+  }
+  btn.textContent = '✓ Done'; btn.disabled = false;
+  result.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Updated ${fixed} parts to use buy cost</span>`
+    + (skipped ? `<span style="color:var(--text-muted)"> · ${skipped} skipped (no cost on file)</span>` : '')
+    + (errors   ? `<span style="color:var(--red)"> · ${errors} errors</span>` : '');
+  toast(`Fixed prices on ${fixed} HCP parts`, 'ok');
 };
 
 // ─── HCP Job Sync ─────────────────────────────────────────────────────────────
