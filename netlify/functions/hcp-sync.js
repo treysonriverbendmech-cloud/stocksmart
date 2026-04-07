@@ -62,8 +62,10 @@ exports.handler = async (event) => {
 
       // Log pagination info on first page
       if (page === 1) {
+        totalPages = meta.total_pages || meta.last_page || meta.totalPages || 1;
         debugInfo.totalPages = totalPages;
-        debugInfo.metaSample = JSON.stringify(meta).substring(0, 200);
+        debugInfo.rawMeta = JSON.stringify(meta).substring(0, 300);
+        debugInfo.rawDataKeys = JSON.stringify(Object.keys(data)).substring(0, 200);
         debugInfo.jobsOnPage1 = jobs.length;
       }
 

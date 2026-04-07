@@ -318,6 +318,22 @@
 </head>
 <body>
 
+<!-- ═══════ SPLASH / AUTH LOADING ═══════ -->
+<div id="splashScreen" style="position:fixed;inset:0;z-index:10000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <div style="font-size:52px">🔒</div>
+  <div style="font-size:22px;font-weight:800;color:var(--text)">Part Locker</div>
+  <div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+</div>
+
+<!-- ═══════ PENDING APPROVAL SCREEN ═══════ -->
+<div id="pendingScreen" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+  <div style="font-size:52px;margin-bottom:16px">⏳</div>
+  <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px">Access Pending</div>
+  <div style="font-size:14px;color:var(--text-muted);max-width:340px;margin-bottom:24px">Your account is waiting for admin approval. You'll get access once an admin approves you.</div>
+  <div id="pendingUserEmail" style="font-size:13px;color:var(--text-muted);margin-bottom:24px"></div>
+  <button class="btn btn-ghost" onclick="handleSignOut()">Sign out</button>
+</div>
+
 <!-- ═══════ LOGIN SCREEN ═══════ -->
 <div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
   <div style="width:100%;max-width:400px">
@@ -619,7 +635,20 @@
     </div>
     <!-- Team tab -->
     <div class="stab-panel" id="tabTeam">
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Manage your team members. The "Pulled by" field is required when manually removing parts from inventory.</p>
+      <!-- Pending user approvals (admin only) -->
+      <div id="pendingUsersSection" style="display:none;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px">👥 Pending Access Requests</div>
+        <div id="pendingUsersList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <!-- Approved users with location mapping -->
+      <div id="approvedUsersSection" style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px">✓ Approved Team Members</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Map each person to their van/location so HCP syncs deduct from the right place.</div>
+        <div id="approvedUsersList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <!-- Legacy manual tech names -->
+      <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px">📋 Tech Names (manual pulls)</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Legacy list used for manual pull dropdowns. Login users above auto-fill this.</p>
       <div class="box-list" id="techList"></div>
       <div class="add-box-row" style="margin-top:16px">
         <input class="finput" id="newTechName" placeholder="Tech name (e.g. Mike Johnson)" style="flex:1">
@@ -932,6 +961,24 @@ function showLoginScreen(show) {
   document.getElementById('signOutBtn').style.display  = show ? 'none' : '';
 }
 
+function hideSplash() {
+  document.getElementById('splashScreen').style.display = 'none';
+}
+
+function showPendingScreen(user) {
+  document.getElementById('pendingScreen').style.display = 'flex';
+  document.getElementById('pendingUserEmail').textContent = user.email || '';
+  document.getElementById('signOutBtn').style.display = '';
+  hideSplash();
+}
+
+function hideAllScreens() {
+  document.getElementById('loginScreen').style.display  = 'none';
+  document.getElementById('pendingScreen').style.display = 'none';
+  document.getElementById('splashScreen').style.display  = 'none';
+  document.getElementById('signOutBtn').style.display    = '';
+}
+
 function switchLoginTab(tab) {
   const isLogin = tab === 'login';
   document.getElementById('loginTabBtn').style.background   = isLogin ? 'var(--purple)' : 'transparent';
@@ -999,12 +1046,144 @@ window.handleForgotPassword = async function() {
 window.handleSignOut = async function() {
   if (!confirm('Sign out of Part Locker?')) return;
   await signOut(auth);
+  showLoginScreen(true);
 };
 
-// Auth state — show login screen or app
-onAuthStateChanged(auth, user => {
+// ─── User Management ──────────────────────────────────────────────────────────
+async function loadTeamUsers() {
+  const isAdmin = currentUser && currentUser.uid === adminUid;
+  document.getElementById('pendingUsersSection').style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Pending
+    const pending = users.filter(u => u.status === 'pending');
+    const pendingEl = document.getElementById('pendingUsersList');
+    if (pending.length === 0) {
+      pendingEl.innerHTML = '<div style="font-size:13px;color:var(--text-muted)">No pending requests.</div>';
+    } else {
+      pendingEl.innerHTML = pending.map(u => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${xss(u.displayName||u.email)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${xss(u.email)}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="approveUser('${u.id}')">Approve</button>
+          <button class="btn btn-danger btn-sm" onclick="denyUser('${u.id}')">Deny</button>
+        </div>`).join('');
+    }
+
+    // Approved
+    const approved = users.filter(u => u.status === 'approved');
+    const approvedEl = document.getElementById('approvedUsersList');
+    approvedEl.innerHTML = approved.map(u => `
+      <div style="padding:10px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${xss(u.displayName||u.email)} ${u.role==='admin'?'<span style="font-size:10px;color:var(--purple)">ADMIN</span>':''}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${xss(u.email)}</div>
+          </div>
+          ${u.id !== currentUser.uid ? `<button class="btn btn-ghost btn-sm" onclick="removeUser('${u.id}')">Remove</button>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:12px;color:var(--text-muted);flex-shrink:0">Their location:</label>
+          <select class="fselect" style="flex:1;font-size:12px" onchange="saveUserLocation('${u.id}', this.value)">
+            <option value="">Not mapped</option>
+            ${boxes.map(b=>`<option value="${b.id}" ${u.locationId===b.id?'selected':''}>${xss(b.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>`).join('');
+  } catch(e) { console.warn('loadTeamUsers:', e.message); }
+}
+
+window.approveUser = async function(uid) {
+  await updateDoc(doc(db,'users',uid), { status:'approved' });
+  toast('User approved!','ok');
+  loadTeamUsers();
+};
+
+window.denyUser = async function(uid) {
+  if (!confirm('Deny and remove this user?')) return;
+  await updateDoc(doc(db,'users',uid), { status:'denied' });
+  loadTeamUsers();
+};
+
+window.removeUser = async function(uid) {
+  if (!confirm('Remove this user\'s access?')) return;
+  await updateDoc(doc(db,'users',uid), { status:'denied' });
+  toast('User removed','ok');
+  loadTeamUsers();
+};
+
+window.saveUserLocation = async function(uid, locationId) {
+  await updateDoc(doc(db,'users',uid), { locationId });
+  toast('Location mapped','ok');
+};
+
+// ─── Admin UID — only this user can approve others ───────────────────────────
+// Set automatically on first login; stored in Firestore settings/admin
+let adminUid = null;
+
+// Auth state — splash → check approval → app or pending
+onAuthStateChanged(auth, async user => {
   currentUser = user;
-  showLoginScreen(!user);
+  if (!user) {
+    hideSplash();
+    showLoginScreen(true);
+    return;
+  }
+
+  // Check/create user record in Firestore
+  const userRef = doc(db, 'users', user.uid);
+  const userSnap = await getDoc(userRef);
+
+  // Check if there's an admin set yet
+  const adminSnap = await getDoc(doc(db, 'settings', 'admin'));
+  const firstUser = !adminSnap.exists();
+
+  if (firstUser) {
+    // First person to log in becomes admin, auto-approved
+    await setDoc(doc(db, 'settings', 'admin'), { uid: user.uid, email: user.email });
+    await setDoc(userRef, {
+      email: user.email,
+      displayName: user.displayName || user.email,
+      role: 'admin',
+      status: 'approved',
+      createdAt: serverTimestamp()
+    }, { merge: true });
+    adminUid = user.uid;
+    hideAllScreens();
+    loadHCPPending();
+    return;
+  }
+
+  adminUid = adminSnap.data().uid;
+
+  if (!userSnap.exists()) {
+    // New user — create pending record
+    await setDoc(userRef, {
+      email: user.email,
+      displayName: user.displayName || user.email,
+      role: 'tech',
+      status: 'pending',
+      createdAt: serverTimestamp()
+    });
+    showPendingScreen(user);
+    return;
+  }
+
+  const userData = userSnap.data();
+  if (userData.status !== 'approved') {
+    showPendingScreen(user);
+    return;
+  }
+
+  // Approved — show app
+  hideAllScreens();
+  loadHCPPending();
 });
 
 // ─── Default subcategories ────────────────────────────────────────────────────
@@ -1080,7 +1259,6 @@ onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), sn
 }, err => { console.error('Firestore transactions:', err); });
 
 seedDefaultLocations();
-loadHCPPending(); // show badge on startup if there are pending deductions
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 function updateStats() {
@@ -1504,7 +1682,14 @@ window.openQty = function(partId, type) {
     settings.techs.forEach(t => {
       const o = document.createElement('option'); o.value = t; dl.appendChild(o);
     });
-    pbSel.value=''; jobRef.value='';
+    // Auto-fill from logged-in user
+    if (currentUser) {
+      const displayName = currentUser.displayName || currentUser.email || '';
+      pbSel.value = displayName;
+    } else {
+      pbSel.value = '';
+    }
+    jobRef.value='';
   } else {
     pbSection.classList.add('hidden');
   }
@@ -1565,6 +1750,7 @@ window.switchTab = function(tab) {
   const tabs = ['categories','boxes','team','branding','integrations'];
   document.querySelectorAll('#settingsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('#settingsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
+  if (tab === 'team') loadTeamUsers();
 };
 
 window.switchReportTab = function(tab) {
@@ -2467,6 +2653,20 @@ window.openTransfer = function() {
   settings.techs.forEach(t => {
     const o = document.createElement('option'); o.value = o.textContent = t; tSel.appendChild(o);
   });
+  // Auto-select logged-in user
+  if (currentUser) {
+    const displayName = currentUser.displayName || currentUser.email || '';
+    // Try exact match first
+    const exactMatch = settings.techs.find(t => t === displayName);
+    if (exactMatch) {
+      tSel.value = exactMatch;
+    } else {
+      // Add as a dynamic option if not already in list
+      const o = document.createElement('option'); o.value = displayName; o.textContent = displayName;
+      tSel.appendChild(o);
+      tSel.value = displayName;
+    }
+  }
   document.getElementById('xfrPartInfo').classList.add('hidden');
   document.getElementById('xfrNotes').value = '';
   showModal('transferModal');
