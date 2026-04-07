@@ -2135,8 +2135,9 @@ window.runHCPSync = async function() {
     if (!resp.ok || result.error) {
       const msg = result.error || 'Sync failed';
       const hint = result.hint ? ` — ${result.hint}` : '';
+      const detail = result.detail ? `<br><span style="font-size:11px;opacity:0.7">HCP said: ${xss(result.detail)}</span>` : '';
       toast(msg+hint, 'err');
-      statusEl.innerHTML = `<span style="color:var(--red)">${xss(msg)}${xss(hint)}</span>`;
+      statusEl.innerHTML = `<span style="color:var(--red)">${xss(msg)}${xss(hint)}${detail}</span>`;
       btn.disabled=false; btn.textContent='🔄 Sync Now';
       return;
     }
