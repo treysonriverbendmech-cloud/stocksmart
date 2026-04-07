@@ -29,15 +29,16 @@ exports.handler = async (event) => {
     // ── 1. Fetch recently completed jobs ─────────────────────────────────────
     // HCP API: GET /jobs?page=1&per_page=100&work_status=completed
     // If lastSyncAt provided, only fetch jobs updated after that date
-    const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const sinceStr = since.toISOString().split('T')[0]; // YYYY-MM-DD
+    // First sync: go back 90 days to catch historical jobs. After that, use lastSyncAt.
+    const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
     let allJobs = [];
     let page = 1;
     let totalPages = 1;
 
     do {
-      const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&work_status[]=complete&sort_direction=desc`;
+      // Include complete, invoiced, and paid — HCP may use any of these for finished jobs
+      const url = `${HCP_BASE}/jobs?page=${page}&per_page=100&work_status[]=complete&work_status[]=invoiced&work_status[]=paid&sort_direction=desc`;
       const resp = await fetch(url, { headers });
 
       if (!resp.ok) {
