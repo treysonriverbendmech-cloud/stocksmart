@@ -998,6 +998,7 @@ function hideAllScreens() {
   document.getElementById('pendingScreen').style.display = 'none';
   document.getElementById('splashScreen').style.display  = 'none';
   document.getElementById('signOutBtn').style.display    = '';
+  startListeners(); // safe to start Firestore now — user is authenticated
 }
 
 function switchLoginTab(tab) {
@@ -1072,6 +1073,7 @@ window.handleForgotPassword = async function() {
 
 window.handleSignOut = async function() {
   if (!confirm('Sign out of Part Locker?')) return;
+  stopListeners();
   await signOut(auth);
   showLoginScreen(true);
 };
@@ -1276,23 +1278,33 @@ async function loadSettings() {
 await loadSettings();
 applyBranding();
 
-// ─── Firestore listeners (started after all functions defined) ────────────────
-// Placed here so Firebase callbacks never fire before applyFilters etc. are ready
-onSnapshot(query(collection(db,'parts'), orderBy('createdAt','desc')), snap => {
-  parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  updateStats(); updateBoxFilter(); applyFilters();
-}, err => { console.error('Firestore parts:', err); toast('Firestore error: ' + err.message, 'err'); });
+// ─── Firestore listeners — started only after user is authenticated & approved ──
+let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null;
 
-onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
-  boxes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  updateBoxFilter(); renderBoxList();
-}, err => { console.error('Firestore boxes:', err); });
+function startListeners() {
+  if (_unsubParts) return; // already running
+  _unsubParts = onSnapshot(query(collection(db,'parts'), orderBy('createdAt','desc')), snap => {
+    parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    updateStats(); updateBoxFilter(); applyFilters();
+  }, err => { console.error('Firestore parts:', err); });
 
-onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
-  transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}, err => { console.error('Firestore transactions:', err); });
+  _unsubBoxes = onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
+    boxes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    updateBoxFilter(); renderBoxList();
+  }, err => { console.error('Firestore boxes:', err); });
 
-seedDefaultLocations();
+  _unsubTxns = onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
+    transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }, err => { console.error('Firestore transactions:', err); });
+
+  seedDefaultLocations();
+}
+
+function stopListeners() {
+  if (_unsubParts) { _unsubParts(); _unsubParts = null; }
+  if (_unsubBoxes) { _unsubBoxes(); _unsubBoxes = null; }
+  if (_unsubTxns)  { _unsubTxns();  _unsubTxns  = null; }
+}
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 function updateStats() {
