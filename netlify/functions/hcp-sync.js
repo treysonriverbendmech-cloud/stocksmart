@@ -86,56 +86,18 @@ exports.handler = async (event) => {
 
     } while (page <= totalPages && page <= 10);
 
-    // ── 2. Fetch line items for each completed job ────────────────────────────
-    // Job list doesn't include line items. Try three approaches per job:
-    //   A) GET /jobs/{id}/line_items  (nested sub-resource)
-    //   B) GET /invoices?job_id={id}  (invoice lookup by job)
-    //   C) GET /invoices?invoice_number={n} (invoice lookup by number)
+    // ── 2. Fetch line items via GET /jobs/{id}/line_items ─────────────────────
     const fullJobs = await Promise.all(
       completedJobs.map(async job => {
         try {
-          let lineItems = [];
-
-          // Approach A: line_items as sub-resource on job
           const liResp = await fetch(`${HCP_BASE}/jobs/${job.id}/line_items`, { headers });
-          if (liResp.ok) {
-            const liData = await liResp.json();
-            lineItems = liData.line_items || liData.data || liData.results || (Array.isArray(liData) ? liData : []);
-            if (!debugInfo.approachA) debugInfo.approachA = `status:${liResp.status} keys:${JSON.stringify(Object.keys(liData))} sample:${JSON.stringify(liData).substring(0,300)}`;
-          } else {
-            if (!debugInfo.approachA) debugInfo.approachA = `status:${liResp.status}`;
-          }
-
-          // Approach B: search invoices by job_id
-          if (!lineItems.length) {
-            const invResp = await fetch(`${HCP_BASE}/invoices?job_id=${job.id}`, { headers });
-            if (invResp.ok) {
-              const invData = await invResp.json();
-              const invoices = invData.invoices || invData.data || invData.results || [];
-              lineItems = invoices.flatMap(inv => inv.line_items || inv.items || []);
-              if (!debugInfo.approachB) debugInfo.approachB = `status:${invResp.status} invoiceCount:${invoices.length} sample:${JSON.stringify(invData).substring(0,300)}`;
-            } else {
-              if (!debugInfo.approachB) debugInfo.approachB = `status:${invResp.status}`;
-            }
-          }
-
-          // Approach C: search invoices by invoice_number
-          if (!lineItems.length && job.invoice_number) {
-            const invResp = await fetch(`${HCP_BASE}/invoices?invoice_number=${job.invoice_number}`, { headers });
-            if (invResp.ok) {
-              const invData = await invResp.json();
-              const invoices = invData.invoices || invData.data || invData.results || [];
-              lineItems = invoices.flatMap(inv => inv.line_items || inv.items || []);
-              if (!debugInfo.approachC) debugInfo.approachC = `status:${invResp.status} invoiceCount:${invoices.length} sample:${JSON.stringify(invData).substring(0,300)}`;
-            } else {
-              if (!debugInfo.approachC) debugInfo.approachC = `status:${invResp.status}`;
-            }
-          }
-
+          if (!liResp.ok) return { ...job, line_items: [] };
+          const liData = await liResp.json();
+          // Response shape: { object: "list", data: [...] }
+          const lineItems = liData.data || liData.line_items || (Array.isArray(liData) ? liData : []);
           return { ...job, line_items: lineItems };
         } catch(e) {
-          if (!debugInfo.fetchError) debugInfo.fetchError = e.message;
-          return job;
+          return { ...job, line_items: [] };
         }
       })
     );
@@ -159,16 +121,17 @@ exports.handler = async (event) => {
       const lineItems   = job.line_items || job.materials || job.invoice_items || [];
 
       for (const item of lineItems) {
-        // Skip non-material items (service charges, labor, etc.)
-        const kind = (item.kind || item.type || item.line_item_type || '').toLowerCase();
-        if (kind && !['material', 'part', 'product', 'equipment', ''].includes(kind)) continue;
+        // Skip labor and other non-material line items
+        const kind = (item.kind || item.type || '').toLowerCase();
+        if (kind === 'labor' || kind === 'service_charge' || kind === 'discount') continue;
 
-        const materialUuid = item.material_uuid || item.pricebook_material_id ||
-                             item.material?.uuid || item.pricebook_item?.uuid || '';
-        const partNum      = (item.part_number || item.sku || item.material?.part_number || '').trim().toUpperCase();
-        const itemName     = item.name || item.description || item.material?.name || 'Unknown';
-        const qty          = parseFloat(item.quantity || item.qty || 1);
-        const unitPrice    = parseFloat(item.unit_price || item.price || 0);
+        // service_item_id is the pricebook UUID (pbmat_... for materials)
+        const materialUuid = item.service_item_id || item.material_uuid || item.pricebook_material_id || '';
+        const partNum      = (item.part_number || item.sku || '').trim().toUpperCase();
+        const itemName     = item.name || item.description || 'Unknown';
+        const qty          = parseFloat(item.quantity || 1);
+        // HCP returns prices in cents
+        const unitPrice    = parseFloat(item.unit_price || 0) / 100;
 
         let matched = null;
         let matchType = '';
