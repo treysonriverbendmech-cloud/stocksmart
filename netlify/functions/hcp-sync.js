@@ -59,6 +59,12 @@ exports.handler = async (event) => {
       const meta = data.meta || data.pagination || {};
       totalPages = meta.total_pages || meta.last_page || 1;
 
+      // Capture raw first job from list for debugging
+      if (page === 1 && jobs[0] && !debugInfo.rawFirstJob) {
+        debugInfo.rawFirstJob = JSON.stringify(jobs[0]).substring(0, 1200);
+        debugInfo.firstJobId = jobs[0].id || jobs[0].job_id || 'unknown';
+      }
+
       // Keep only completed jobs updated since our cutoff
       const newDone = jobs.filter(j => {
         const status = (j.work_status || j.status || '').toLowerCase();
