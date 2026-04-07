@@ -26,9 +26,9 @@ exports.handler = async (event) => {
   };
 
   try {
+    const debugInfo = {};
+
     // ── 1. Fetch recently completed jobs ─────────────────────────────────────
-    // HCP API: GET /jobs?page=1&per_page=100&work_status=completed
-    // If lastSyncAt provided, only fetch jobs updated after that date
     // First sync: go back 90 days to catch historical jobs. After that, use lastSyncAt.
     const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
@@ -56,14 +56,16 @@ exports.handler = async (event) => {
 
       const data = await resp.json();
 
-      // Log raw shape on first page to help debug response structure
+      // Capture raw shape of first job + first line item for debugging
       if (page === 1) {
-        console.log('HCP jobs response keys:', Object.keys(data));
-        if (data.jobs && data.jobs[0]) {
-          console.log('First job keys:', Object.keys(data.jobs[0]));
-          if (data.jobs[0].line_items) {
-            console.log('First line item keys:', Object.keys(data.jobs[0].line_items[0] || {}));
-          }
+        const firstJob = (data.jobs || data.data || data.results || [])[0];
+        if (firstJob) {
+          debugInfo.firstJobKeys = Object.keys(firstJob);
+          debugInfo.firstJobStatus = firstJob.work_status || firstJob.status || 'unknown';
+          const lineItems = firstJob.line_items || firstJob.materials || firstJob.invoice_items || [];
+          debugInfo.lineItemCount = lineItems.length;
+          debugInfo.firstLineItemKeys = lineItems[0] ? Object.keys(lineItems[0]) : [];
+          debugInfo.firstLineItemSample = lineItems[0] ? JSON.stringify(lineItems[0]).substring(0, 400) : 'none';
         }
       }
 
@@ -168,6 +170,7 @@ exports.handler = async (event) => {
         ok:           true,
         jobsScanned:  allJobs.length,
         statusesSeen,
+        debugInfo,
         pending,
         unmatched,
         syncedAt:     new Date().toISOString(),

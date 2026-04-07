@@ -2165,13 +2165,14 @@ window.runHCPSync = async function() {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
-    const { jobsScanned=0, unmatched=[], statusesSeen=[] } = result;
-    const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Job statuses seen: ${statusesSeen.join(', ')}</span>` : '';
+    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugInfo={} } = result;
+    const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Statuses: ${statusesSeen.join(', ')}</span>` : '';
+    const debugNote = debugInfo.firstJobKeys ? `<br><span style="font-size:10px;color:var(--text-muted)">Job fields: ${(debugInfo.firstJobKeys||[]).join(', ')}<br>Line items: ${debugInfo.lineItemCount} · Fields: ${(debugInfo.firstLineItemKeys||[]).join(', ')}<br>Sample: ${debugInfo.firstLineItemSample||''}</span>` : '';
     const unmatchedNote = unmatched.length > 0
       ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
       : '';
 
-    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}`;
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}`;
 
     loadHCPPending();
     if (newPending.length > 0) {
