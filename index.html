@@ -1214,6 +1214,14 @@ onAuthStateChanged(auth, async user => {
   const userData = userSnap.data();
   if (userData.status !== 'approved') {
     showPendingScreen(user);
+    // Watch for approval in real-time — let them in the moment admin approves
+    const unsub = onSnapshot(userRef, snap => {
+      if (snap.exists() && snap.data().status === 'approved') {
+        unsub();
+        hideAllScreens();
+        loadHCPPending();
+      }
+    });
     return;
   }
 
