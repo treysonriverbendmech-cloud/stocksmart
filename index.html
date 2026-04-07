@@ -955,7 +955,8 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider,
+  createUserWithEmailAndPassword, signInWithPopup, signInWithRedirect,
+  getRedirectResult, GoogleAuthProvider,
   signOut, sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
@@ -1047,7 +1048,13 @@ window.handleEmailAuth = async function() {
 window.handleGoogleSignIn = async function() {
   document.getElementById('authError').style.display = 'none';
   try {
-    await signInWithPopup(auth, googleProvider);
+    // Use redirect on mobile (popup gets blocked), popup on desktop
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    if (isMobile) {
+      await signInWithRedirect(auth, googleProvider);
+    } else {
+      await signInWithPopup(auth, googleProvider);
+    }
   } catch(e) {
     if (e.code !== 'auth/popup-closed-by-user') showAuthError(e.message);
   }
@@ -1146,6 +1153,13 @@ window.saveUserLocation = async function(uid, locationId) {
 // ─── Admin UID — only this user can approve others ───────────────────────────
 // Set automatically on first login; stored in Firestore settings/admin
 let adminUid = null;
+
+// Handle redirect result from Google sign-in on mobile
+getRedirectResult(auth).catch(e => {
+  if (e && e.code !== 'auth/cancelled-popup-request') {
+    console.warn('Google redirect error:', e.message);
+  }
+});
 
 // Auth state — splash → check approval → app or pending
 onAuthStateChanged(auth, async user => {
