@@ -1949,7 +1949,7 @@ function showHCPPreview(rows) {
       <span class="tag ${['cat-hvac','cat-plumbing','cat-electrical','cat-general','cat-chemical'][['HVAC','Plumbing','Electrical','General','Chemicals'].indexOf(mapHCPCategory(r.category))]||'cat-general'}" style="flex-shrink:0;font-size:10px">${mapHCPCategory(r.category)}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${xss(r.name)}</div>
-        <div style="color:var(--text-muted)">Part# ${xss(r.part_number||'—')} · ${xss(r.price||'')}</div>
+        <div style="color:var(--text-muted)">Part# ${xss(r.part_number||'—')} · Cost: $${parseFloat((r.cost||'0').replace(/[^0-9.]/g,''))||0}</div>
       </div>
     </div>`).join('') + (newRows.length>8?`<div style="padding:8px 12px;color:var(--text-muted)">…and ${newRows.length-8} more</div>`:'');
   document.getElementById('hcpPreview').classList.remove('hidden');
@@ -1984,8 +1984,8 @@ window.runHCPImport = async function() {
     const chunk=toImport.slice(i,i+BATCH);
     await Promise.all(chunk.map(async r => {
       try {
-        const price = parseFloat((r.price||'0').replace(/[^0-9.]/g,''))||0;
-        const cost  = parseFloat((r.cost||'0').replace(/[^0-9.]/g,''))||0;
+        const sellPrice = parseFloat((r.price||'0').replace(/[^0-9.]/g,''))||0;
+        const cost      = parseFloat((r.cost||'0').replace(/[^0-9.]/g,''))||0;
         const cat   = mapHCPCategory(r.category);
         await addDoc(collection(db,'parts'),{
           name:        r.name.trim(),
@@ -1994,7 +1994,8 @@ window.runHCPImport = async function() {
           partNumber:  r.part_number || '',
           hcpUuid:     r.uuid || '',
           hcpCategory: r.category || '',
-          price:       price,
+          price:       cost,       // store buy cost as the inventory price
+          sellPrice:   sellPrice,  // keep sell price for reference
           cost:        cost,
           quantity:    0,
           minQuantity: 0,
