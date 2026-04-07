@@ -547,6 +547,7 @@
       <button class="stab" onclick="switchTab('boxes')">Locations</button>
       <button class="stab" onclick="switchTab('team')">Team</button>
       <button class="stab" onclick="switchTab('branding')">Branding</button>
+      <button class="stab" onclick="switchTab('integrations')">🔗 HCP</button>
     </div>
     <!-- Categories tab -->
     <div class="stab-panel active" id="tabCategories">
@@ -595,6 +596,37 @@
         <input type="file" id="brandLogoIn" accept="image/*" style="display:none" onchange="onBrandLogoFile(event)">
       </div>
       <button class="btn btn-primary btn-full" onclick="saveBranding()" style="margin-top:8px">Save Branding</button>
+    </div>
+    <!-- Integrations / HCP tab -->
+    <div class="stab-panel" id="tabIntegrations">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="font-size:22px">🔗</div>
+        <div>
+          <div style="font-weight:700;font-size:15px;color:var(--text)">Housecall Pro — Pricebook Import</div>
+          <div style="font-size:12px;color:var(--text-muted)">Import your HCP pricebook to sync part numbers for automatic inventory tracking</div>
+        </div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin:14px 0;font-size:13px;color:var(--text-muted);line-height:1.6">
+        <strong style="color:var(--text)">How to export from HCP:</strong><br>
+        Pricebook → Materials → Export → Download CSV → Upload below
+      </div>
+      <!-- CSV Upload zone -->
+      <div id="hcpDropZone" style="border:2px dashed var(--border);border-radius:var(--radius-sm);padding:28px;text-align:center;cursor:pointer;background:var(--surface2);transition:border-color .2s" onclick="document.getElementById('hcpCsvInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="onHCPFileDrop(event)">
+        <div style="font-size:28px;margin-bottom:8px">📄</div>
+        <div style="font-weight:600;color:var(--text);margin-bottom:4px">Drop HCP pricebook CSV here</div>
+        <div style="font-size:12px;color:var(--text-muted)">or tap to browse</div>
+        <input type="file" id="hcpCsvInput" accept=".csv" style="display:none" onchange="onHCPCsvFile(event)">
+      </div>
+      <!-- Preview area -->
+      <div id="hcpPreview" class="hidden" style="margin-top:16px">
+        <div id="hcpPreviewStats" style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px"></div>
+        <div id="hcpPreviewList" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-size:12px"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('hcpPreview').classList.add('hidden')">Cancel</button>
+          <button class="btn btn-primary" style="flex:2" id="hcpImportBtn" onclick="runHCPImport()">⬇ Import Parts</button>
+        </div>
+      </div>
+      <div id="hcpImportResult" style="margin-top:12px;font-size:13px"></div>
     </div>
   </div>
 </div>
@@ -1336,7 +1368,7 @@ window.openSettings = function() {
 };
 
 window.switchTab = function(tab) {
-  const tabs = ['categories','boxes','team','branding'];
+  const tabs = ['categories','boxes','team','branding','integrations'];
   document.querySelectorAll('#settingsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('#settingsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
 };
@@ -1803,6 +1835,152 @@ document.addEventListener('click', e => {
 });
 
 // ─── Transfer Inventory ───────────────────────────────────────────────────────
+// ─── HCP Pricebook Importer ───────────────────────────────────────────────────
+const HCP_CAT_MAP = {
+  // HVAC
+  'blower motor':'HVAC','capacitors':'HVAC','contactors':'HVAC','control boards':'HVAC',
+  'condenser fan motor':'HVAC','fan blades':'HVAC','fan controls':'HVAC','filter driers':'HVAC',
+  'filters':'HVAC','flame sensors':'HVAC','fuses':'HVAC','gas valve':'HVAC',
+  'hard start kit':'HVAC','heat parts':'HVAC','igniters':'HVAC','ignition modules':'HVAC',
+  'mini splits':'HVAC','refrigerant':'HVAC','relays':'HVAC','thermostat':'HVAC',
+  'thermostats':'HVAC','expansion valves':'HVAC','belts':'HVAC','ductwork':'HVAC',
+  'condensate pumps':'HVAC','disconnect':'HVAC','ice machine parts':'HVAC',
+  'unit heaters/ tube heaters':'HVAC','transformer':'HVAC',
+  // Plumbing
+  'plumbing material':'Plumbing','plumbing parts':'Plumbing',
+  'copper fittings':'Plumbing','vent pipe':'Plumbing','water filters':'Plumbing',
+  // Electrical
+  'conduit':'Electrical','wire':'Electrical',
+  // Chemicals
+  'coil cleaner':'Chemicals',
+  // General
+  'consumables':'General','install accessories':'General','trip charge':'General',
+};
+
+function mapHCPCategory(hcpCat) {
+  const key = (hcpCat||'').toLowerCase().trim();
+  if (HCP_CAT_MAP[key]) return HCP_CAT_MAP[key];
+  // fuzzy: if any keyword matches
+  if (/trane|ruud|runtru|mitsubishi|heat pump|mini.?split|furnace|a\/c|hvac|seer|package|coil/i.test(key)) return 'HVAC';
+  if (/plumb|copper|pipe|fitting/i.test(key)) return 'Plumbing';
+  if (/wire|conduit|electric|panel/i.test(key)) return 'Electrical';
+  if (/clean|chemical|solvent|oil/i.test(key)) return 'Chemicals';
+  return 'General';
+}
+
+function parseHCPCsv(text) {
+  const lines = text.split('\n');
+  const headers = lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  const rows = [];
+  for (let i=1;i<lines.length;i++) {
+    if (!lines[i].trim()) continue;
+    // Simple CSV parse (handles quoted fields)
+    const vals = []; let cur='', inQ=false;
+    for (let c of lines[i]+',') {
+      if (c==='"') { inQ=!inQ; }
+      else if (c===',' && !inQ) { vals.push(cur.trim()); cur=''; }
+      else cur+=c;
+    }
+    if (vals.length < 4) continue;
+    const row = {};
+    headers.forEach((h,idx)=>row[h]=vals[idx]||'');
+    if (row.name) rows.push(row);
+  }
+  return rows;
+}
+
+let hcpParsedRows = [];
+
+function showHCPPreview(rows) {
+  hcpParsedRows = rows;
+  // Count how many are new vs already exist (by hcpUuid)
+  const existingUuids = new Set(parts.map(p=>p.hcpUuid).filter(Boolean));
+  const newRows = rows.filter(r=>!existingUuids.has(r.uuid));
+  const dupRows = rows.length - newRows.length;
+  document.getElementById('hcpPreviewStats').innerHTML =
+    `<span style="color:var(--green)">✓ ${newRows.length} new parts</span> ready to import` +
+    (dupRows>0 ? ` · <span style="color:var(--text-muted)">${dupRows} already imported (will skip)</span>` : '') +
+    `<div style="font-size:12px;color:var(--text-muted);font-weight:400;margin-top:2px">Quantity, location & photos can be added after import</div>`;
+  // Show preview list
+  const listEl = document.getElementById('hcpPreviewList');
+  listEl.innerHTML = newRows.slice(0,8).map(r=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">
+      <span class="tag ${['cat-hvac','cat-plumbing','cat-electrical','cat-general','cat-chemical'][['HVAC','Plumbing','Electrical','General','Chemicals'].indexOf(mapHCPCategory(r.category))]||'cat-general'}" style="flex-shrink:0;font-size:10px">${mapHCPCategory(r.category)}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${xss(r.name)}</div>
+        <div style="color:var(--text-muted)">Part# ${xss(r.part_number||'—')} · ${xss(r.price||'')}</div>
+      </div>
+    </div>`).join('') + (newRows.length>8?`<div style="padding:8px 12px;color:var(--text-muted)">…and ${newRows.length-8} more</div>`:'');
+  document.getElementById('hcpPreview').classList.remove('hidden');
+}
+
+window.onHCPCsvFile = function(e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { const rows=parseHCPCsv(ev.target.result); showHCPPreview(rows); };
+  reader.readAsText(file);
+  e.target.value='';
+};
+
+window.onHCPFileDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('hcpDropZone').style.borderColor='var(--border)';
+  const file = e.dataTransfer.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { const rows=parseHCPCsv(ev.target.result); showHCPPreview(rows); };
+  reader.readAsText(file);
+};
+
+window.runHCPImport = async function() {
+  const existingUuids = new Set(parts.map(p=>p.hcpUuid).filter(Boolean));
+  const toImport = hcpParsedRows.filter(r=>r.name && !existingUuids.has(r.uuid));
+  if (!toImport.length) { toast('No new parts to import','err'); return; }
+  const btn = document.getElementById('hcpImportBtn');
+  btn.textContent='Importing…'; btn.disabled=true;
+  let count=0, errors=0;
+  const BATCH=10;
+  for (let i=0;i<toImport.length;i+=BATCH) {
+    const chunk=toImport.slice(i,i+BATCH);
+    await Promise.all(chunk.map(async r => {
+      try {
+        const price = parseFloat((r.price||'0').replace(/[^0-9.]/g,''))||0;
+        const cost  = parseFloat((r.cost||'0').replace(/[^0-9.]/g,''))||0;
+        const cat   = mapHCPCategory(r.category);
+        await addDoc(collection(db,'parts'),{
+          name:        r.name.trim(),
+          category:    cat,
+          subcategory: r.category.trim(),
+          partNumber:  r.part_number || '',
+          hcpUuid:     r.uuid || '',
+          hcpCategory: r.category || '',
+          price:       price,
+          cost:        cost,
+          quantity:    0,
+          minQuantity: 0,
+          keywords:    [],
+          notes:       r.description || '',
+          boxId:       null, boxName:null, boxNumber:null,
+          photo:       null,
+          trackUnit:   null,
+          isRefrigerant: false,
+          createdAt:   serverTimestamp(),
+          updatedAt:   serverTimestamp(),
+          importedFrom:'hcp',
+        });
+        count++;
+      } catch(e) { errors++; }
+    }));
+    btn.textContent=`Importing… ${Math.min(i+BATCH,toImport.length)}/${toImport.length}`;
+  }
+  btn.textContent='⬇ Import Parts'; btn.disabled=false;
+  document.getElementById('hcpPreview').classList.add('hidden');
+  document.getElementById('hcpImportResult').innerHTML =
+    `<div style="color:var(--green);font-weight:600">✓ Imported ${count} parts from HCP pricebook${errors?` (${errors} errors)`:''}</div>
+     <div style="color:var(--text-muted);margin-top:4px">Now add quantities, locations &amp; photos to each part. HCP part numbers are saved for automatic job syncing.</div>`;
+  toast(`Imported ${count} parts from HCP!`,'ok');
+  hcpParsedRows=[];
+};
+
 // Called from part detail — pre-selects the part and its current location
 window.openTransferForPart = function(partId) {
   openTransfer();
