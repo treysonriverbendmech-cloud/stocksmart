@@ -86,44 +86,57 @@ exports.handler = async (event) => {
 
     } while (page <= totalPages && page <= 10);
 
-    // ── 2. Fetch full job details + invoice line items ────────────────────────
-    // HCP stores line items on the invoice, not the job.
-    // Job detail → find invoice_id or invoice → fetch invoice → get line_items
+    // ── 2. Fetch line items for each completed job ────────────────────────────
+    // Job list doesn't include line items. Try three approaches per job:
+    //   A) GET /jobs/{id}/line_items  (nested sub-resource)
+    //   B) GET /invoices?job_id={id}  (invoice lookup by job)
+    //   C) GET /invoices?invoice_number={n} (invoice lookup by number)
     const fullJobs = await Promise.all(
       completedJobs.map(async job => {
         try {
-          // Get full job detail
-          const jobResp = await fetch(`${HCP_BASE}/jobs/${job.id}`, { headers });
-          const jobDetail = jobResp.ok ? await jobResp.json() : job;
+          let lineItems = [];
 
-          // Capture first job's keys for debugging
-          if (!debugInfo.firstJobDetailKeys) {
-            debugInfo.firstJobDetailKeys = Object.keys(jobDetail);
-            debugInfo.firstJobSample = JSON.stringify(jobDetail).substring(0, 800);
+          // Approach A: line_items as sub-resource on job
+          const liResp = await fetch(`${HCP_BASE}/jobs/${job.id}/line_items`, { headers });
+          if (liResp.ok) {
+            const liData = await liResp.json();
+            lineItems = liData.line_items || liData.data || liData.results || (Array.isArray(liData) ? liData : []);
+            if (!debugInfo.approachA) debugInfo.approachA = `status:${liResp.status} keys:${JSON.stringify(Object.keys(liData))} sample:${JSON.stringify(liData).substring(0,300)}`;
+          } else {
+            if (!debugInfo.approachA) debugInfo.approachA = `status:${liResp.status}`;
           }
 
-          // Look for line items directly on job
-          let lineItems = jobDetail.line_items || jobDetail.materials ||
-                          jobDetail.invoice_items || jobDetail.services || [];
-
-          // If not found, try fetching the invoice
+          // Approach B: search invoices by job_id
           if (!lineItems.length) {
-            const invoiceId = jobDetail.invoice?.id || jobDetail.invoice_id ||
-                              jobDetail.outstanding_invoice?.id;
-            if (invoiceId) {
-              const invResp = await fetch(`${HCP_BASE}/invoices/${invoiceId}`, { headers });
-              if (invResp.ok) {
-                const inv = await invResp.json();
-                lineItems = inv.line_items || inv.items || inv.materials || [];
-                if (!debugInfo.firstInvoiceSample && lineItems.length) {
-                  debugInfo.firstInvoiceSample = JSON.stringify(inv).substring(0, 800);
-                }
-              }
+            const invResp = await fetch(`${HCP_BASE}/invoices?job_id=${job.id}`, { headers });
+            if (invResp.ok) {
+              const invData = await invResp.json();
+              const invoices = invData.invoices || invData.data || invData.results || [];
+              lineItems = invoices.flatMap(inv => inv.line_items || inv.items || []);
+              if (!debugInfo.approachB) debugInfo.approachB = `status:${invResp.status} invoiceCount:${invoices.length} sample:${JSON.stringify(invData).substring(0,300)}`;
+            } else {
+              if (!debugInfo.approachB) debugInfo.approachB = `status:${invResp.status}`;
             }
           }
 
-          return { ...jobDetail, line_items: lineItems };
-        } catch { return job; }
+          // Approach C: search invoices by invoice_number
+          if (!lineItems.length && job.invoice_number) {
+            const invResp = await fetch(`${HCP_BASE}/invoices?invoice_number=${job.invoice_number}`, { headers });
+            if (invResp.ok) {
+              const invData = await invResp.json();
+              const invoices = invData.invoices || invData.data || invData.results || [];
+              lineItems = invoices.flatMap(inv => inv.line_items || inv.items || []);
+              if (!debugInfo.approachC) debugInfo.approachC = `status:${invResp.status} invoiceCount:${invoices.length} sample:${JSON.stringify(invData).substring(0,300)}`;
+            } else {
+              if (!debugInfo.approachC) debugInfo.approachC = `status:${invResp.status}`;
+            }
+          }
+
+          return { ...job, line_items: lineItems };
+        } catch(e) {
+          if (!debugInfo.fetchError) debugInfo.fetchError = e.message;
+          return job;
+        }
       })
     );
 
