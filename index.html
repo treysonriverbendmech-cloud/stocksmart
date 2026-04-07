@@ -337,6 +337,7 @@
       <div class="header-desktop-btns" style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
         <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
+        <button class="btn btn-ghost btn-sm" id="hcpPendingNavBtn" onclick="openHCPPending()" title="HCP Pending" style="display:none">🔗 HCP <span id="hcpPendingBadge" style="background:var(--red);color:#fff;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
         <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
@@ -362,6 +363,7 @@
   <div class="nav-divider"></div>
   <button class="nav-item" onclick="openReceipt();closeNav()">📋 Scan Receipt</button>
   <button class="nav-item" onclick="openReports();closeNav()">📊 Reports</button>
+  <button class="nav-item" id="hcpPendingNavBtnMobile" onclick="openHCPPending();closeNav()" style="display:none">🔗 HCP Pending</button>
   <div class="nav-divider"></div>
   <button class="nav-item" onclick="openSettings();closeNav()">⚙ Settings</button>
 </div>
@@ -602,10 +604,25 @@
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
         <div style="font-size:22px">🔗</div>
         <div>
-          <div style="font-weight:700;font-size:15px;color:var(--text)">Housecall Pro — Pricebook Import</div>
-          <div style="font-size:12px;color:var(--text-muted)">Import your HCP pricebook to sync part numbers for automatic inventory tracking</div>
+          <div style="font-weight:700;font-size:15px;color:var(--text)">Housecall Pro Integration</div>
+          <div style="font-size:12px;color:var(--text-muted)">Import pricebook &amp; sync completed jobs to auto-deduct inventory</div>
         </div>
       </div>
+      <!-- API Key -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:8px">⚡ Job Sync — Approval Mode</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Scans your completed HCP jobs and queues inventory deductions for your review. Nothing is deducted until you approve.</div>
+        <div class="fgroup" style="margin-bottom:10px">
+          <label class="flabel">HCP API Key</label>
+          <input id="hcpApiKeyInput" class="finput" type="password" placeholder="Paste your HCP API key here…" autocomplete="off">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="saveHCPApiKey()">💾 Save Key</button>
+          <button class="btn btn-primary btn-sm" style="flex:2" id="hcpSyncBtn" onclick="runHCPSync()">🔄 Sync Now</button>
+        </div>
+        <div id="hcpSyncStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
+      </div>
+      <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:6px">📄 Pricebook Import</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin:14px 0;font-size:13px;color:var(--text-muted);line-height:1.6">
         <strong style="color:var(--text)">How to export from HCP:</strong><br>
         Pricebook → Materials → Export → Download CSV → Upload below
@@ -662,6 +679,26 @@
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn btn-ghost" style="flex:1" onclick="closeModal('qtyModal')">Cancel</button>
         <button class="btn btn-primary" style="flex:2" id="qtyConfirmBtn" onclick="confirmQty()">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ HCP PENDING DEDUCTIONS MODAL ═══════ -->
+<div id="hcpPendingModal" class="overlay hidden" onclick="overlayClick(event,'hcpPendingModal')">
+  <div class="sheet sheet-wide" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">🔗 HCP Pending Deductions</span>
+      <button class="close-x" onclick="closeModal('hcpPendingModal')">✕</button>
+    </div>
+    <div style="padding:0 20px 8px">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Review parts used on completed HCP jobs. Approve to deduct from inventory, or skip to ignore.</div>
+      <div id="hcpPendingList" style="display:flex;flex-direction:column;gap:10px;max-height:65vh;overflow-y:auto"></div>
+      <div id="hcpPendingEmpty" class="hidden" style="text-align:center;padding:32px;color:var(--text-muted)">
+        <div style="font-size:32px;margin-bottom:8px">✅</div>
+        <div style="font-weight:600">All caught up!</div>
+        <div style="font-size:13px">No pending deductions. Run a sync to check for new jobs.</div>
       </div>
     </div>
   </div>
@@ -799,7 +836,7 @@ if ('serviceWorker' in navigator) {
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
   getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
-  doc, getDoc, onSnapshot, query, orderBy, serverTimestamp
+  doc, getDoc, onSnapshot, query, orderBy, where, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -1979,6 +2016,212 @@ window.runHCPImport = async function() {
      <div style="color:var(--text-muted);margin-top:4px">Now add quantities, locations &amp; photos to each part. HCP part numbers are saved for automatic job syncing.</div>`;
   toast(`Imported ${count} parts from HCP!`,'ok');
   hcpParsedRows=[];
+};
+
+// ─── HCP Job Sync ─────────────────────────────────────────────────────────────
+let hcpPendingItems = []; // in-memory pending deductions
+
+// Save/load API key in Firestore settings
+window.saveHCPApiKey = async function() {
+  const key = document.getElementById('hcpApiKeyInput').value.trim();
+  if (!key) { toast('Enter your HCP API key first','err'); return; }
+  try {
+    await setDoc(doc(db,'settings','hcp'), { apiKey: key }, { merge: true });
+    toast('HCP API key saved!','ok');
+    document.getElementById('hcpApiKeyInput').value = '••••••••••••••••';
+  } catch(e) { toast('Save failed: '+e.message,'err'); }
+};
+
+async function loadHCPApiKey() {
+  try {
+    const snap = await getDoc(doc(db,'settings','hcp'));
+    if (snap.exists() && snap.data().apiKey) {
+      document.getElementById('hcpApiKeyInput').value = '••••••••••••••••';
+      return snap.data().apiKey;
+    }
+  } catch(e) {}
+  return null;
+}
+
+async function loadHCPMeta() {
+  try {
+    const snap = await getDoc(doc(db,'settings','hcp'));
+    if (snap.exists()) return snap.data();
+  } catch(e) {}
+  return {};
+}
+
+window.runHCPSync = async function() {
+  const btn = document.getElementById('hcpSyncBtn');
+  const statusEl = document.getElementById('hcpSyncStatus');
+  btn.disabled = true; btn.textContent = '🔄 Syncing…';
+  statusEl.textContent = 'Connecting to Housecall Pro…';
+
+  try {
+    const meta   = await loadHCPMeta();
+    const apiKey = meta.apiKey;
+    if (!apiKey) {
+      toast('Save your HCP API key first','err');
+      btn.disabled=false; btn.textContent='🔄 Sync Now';
+      statusEl.textContent='';
+      return;
+    }
+
+    statusEl.textContent = 'Fetching completed jobs…';
+
+    const resp = await fetch('/.netlify/functions/hcp-sync', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        apiKey,
+        lastSyncAt: meta.lastSyncAt || null,
+        parts: parts.map(p => ({
+          id: p.id, name: p.name, partNumber: p.partNumber||'',
+          hcpUuid: p.hcpUuid||'', quantity: p.quantity||0
+        }))
+      })
+    });
+
+    const result = await resp.json();
+
+    if (!resp.ok || result.error) {
+      const msg = result.error || 'Sync failed';
+      const hint = result.hint ? ` — ${result.hint}` : '';
+      toast(msg+hint, 'err');
+      statusEl.innerHTML = `<span style="color:var(--red)">${xss(msg)}${xss(hint)}</span>`;
+      btn.disabled=false; btn.textContent='🔄 Sync Now';
+      return;
+    }
+
+    // Store pending deductions in Firestore
+    const newPending = result.pending || [];
+    for (const item of newPending) {
+      await addDoc(collection(db,'hcpPending'), { ...item, createdAt: serverTimestamp() });
+    }
+
+    // Update lastSyncAt
+    await setDoc(doc(db,'settings','hcp'), {
+      apiKey, lastSyncAt: result.syncedAt
+    }, { merge: true });
+
+    const { jobsScanned=0, unmatched=[] } = result;
+    const unmatchedNote = unmatched.length > 0
+      ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
+      : '';
+
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>`;
+
+    loadHCPPending();
+    if (newPending.length > 0) {
+      toast(`${newPending.length} pending deductions from HCP jobs`, 'ok');
+    } else {
+      toast(`Sync complete — no new deductions`, 'ok');
+    }
+
+  } catch(e) {
+    toast('Sync error: '+e.message,'err');
+    statusEl.innerHTML = `<span style="color:var(--red)">${xss(e.message)}</span>`;
+  }
+
+  btn.disabled=false; btn.textContent='🔄 Sync Now';
+};
+
+// Load pending deductions from Firestore
+async function loadHCPPending() {
+  try {
+    const snap = await getDocs(query(
+      collection(db,'hcpPending'),
+      where('status','==','pending'),
+      orderBy('completedAt','desc')
+    ));
+    hcpPendingItems = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    updateHCPBadge();
+  } catch(e) { console.warn('loadHCPPending:', e.message); }
+}
+
+function updateHCPBadge() {
+  const count = hcpPendingItems.length;
+  const btn = document.getElementById('hcpPendingNavBtn');
+  const btnM = document.getElementById('hcpPendingNavBtnMobile');
+  const badge = document.getElementById('hcpPendingBadge');
+  if (btn) btn.style.display = count > 0 ? '' : 'none';
+  if (btnM) btnM.style.display = count > 0 ? '' : 'none';
+  if (badge) badge.textContent = count;
+}
+
+window.openHCPPending = function() {
+  renderHCPPendingList();
+  showModal('hcpPendingModal');
+};
+
+function renderHCPPendingList() {
+  const listEl  = document.getElementById('hcpPendingList');
+  const emptyEl = document.getElementById('hcpPendingEmpty');
+  if (!hcpPendingItems.length) {
+    listEl.innerHTML=''; emptyEl.classList.remove('hidden'); return;
+  }
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = hcpPendingItems.map(item => {
+    const date = item.completedAt ? new Date(item.completedAt).toLocaleDateString() : '—';
+    const afterQty = Math.max(0, (item.currentQty||0) - (item.quantity||1));
+    const matchBadge = item.matchType==='hcpUuid'
+      ? `<span style="font-size:10px;background:rgba(99,102,241,.15);color:var(--accent);border-radius:4px;padding:1px 6px">✓ UUID match</span>`
+      : `<span style="font-size:10px;background:rgba(245,158,11,.15);color:var(--amber);border-radius:4px;padding:1px 6px">Part # match</span>`;
+    return `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:var(--text);font-size:14px">${xss(item.partName)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job #${xss(item.jobNumber)} · ${xss(item.tech)} · ${date}</div>
+        </div>
+        ${matchBadge}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:13px;margin-bottom:12px">
+        <span>Qty used: <strong>${item.quantity}</strong></span>
+        <span style="color:var(--text-muted)">→</span>
+        <span>Stock: <strong>${item.currentQty}</strong> → <strong style="color:${afterQty<=0?'var(--red)':'var(--text)'}">${afterQty}</strong></span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="skipHCPDeduction('${item._id}')">Skip</button>
+        <button class="btn btn-success btn-sm" style="flex:2" onclick="approveHCPDeduction('${item._id}')">✓ Approve &amp; Deduct</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.approveHCPDeduction = async function(pendingId) {
+  const item = hcpPendingItems.find(i=>i._id===pendingId); if(!item) return;
+  try {
+    const part = parts.find(p=>p.id===item.partId);
+    const currentQty = part ? (parseInt(part.quantity)||0) : (item.currentQty||0);
+    const newQty = Math.max(0, currentQty - item.quantity);
+    // Deduct inventory
+    await updateDoc(doc(db,'parts',item.partId), { quantity: newQty, updatedAt: serverTimestamp() });
+    // Log transaction
+    await addDoc(collection(db,'transactions'), {
+      partId: item.partId, partName: item.partName, partNumber: item.partNumber||'',
+      type: 'use', quantity: item.quantity,
+      pulledBy: item.tech, jobRef: `HCP Job #${item.jobNumber}`,
+      locationId: part?.boxId||null, locationName: part?.boxName||null,
+      source: 'hcp', hcpJobId: item.jobId,
+      createdAt: serverTimestamp()
+    });
+    // Mark pending as approved
+    await updateDoc(doc(db,'hcpPending',pendingId), { status:'approved', approvedAt: serverTimestamp() });
+    hcpPendingItems = hcpPendingItems.filter(i=>i._id!==pendingId);
+    updateHCPBadge();
+    renderHCPPendingList();
+    toast(`Deducted ${item.quantity} × ${item.partName}`,'ok');
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
+window.skipHCPDeduction = async function(pendingId) {
+  try {
+    await updateDoc(doc(db,'hcpPending',pendingId), { status:'skipped', skippedAt: serverTimestamp() });
+    hcpPendingItems = hcpPendingItems.filter(i=>i._id!==pendingId);
+    updateHCPBadge();
+    renderHCPPendingList();
+  } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
 // Called from part detail — pre-selects the part and its current location
