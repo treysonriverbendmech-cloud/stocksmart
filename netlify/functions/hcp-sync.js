@@ -29,6 +29,8 @@ exports.handler = async (event) => {
   };
 
   try {
+    const debugInfo = {};
+
     // ── 1. Fetch jobs (all statuses, filter to completed ones) ────────────────
     const since = lastSyncAt ? new Date(lastSyncAt) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
@@ -78,14 +80,43 @@ exports.handler = async (event) => {
 
     } while (page <= totalPages && page <= 10);
 
-    // ── 2. Fetch full job details to get line items ───────────────────────────
-    // The list endpoint doesn't include line items — fetch each job individually
+    // ── 2. Fetch full job details + invoice line items ────────────────────────
+    // HCP stores line items on the invoice, not the job.
+    // Job detail → find invoice_id or invoice → fetch invoice → get line_items
     const fullJobs = await Promise.all(
       completedJobs.map(async job => {
         try {
-          const r = await fetch(`${HCP_BASE}/jobs/${job.id}`, { headers });
-          if (!r.ok) return job; // fall back to list data if detail fails
-          return await r.json();
+          // Get full job detail
+          const jobResp = await fetch(`${HCP_BASE}/jobs/${job.id}`, { headers });
+          const jobDetail = jobResp.ok ? await jobResp.json() : job;
+
+          // Capture first job's keys for debugging
+          if (!debugInfo.firstJobDetailKeys) {
+            debugInfo.firstJobDetailKeys = Object.keys(jobDetail);
+            debugInfo.firstJobSample = JSON.stringify(jobDetail).substring(0, 800);
+          }
+
+          // Look for line items directly on job
+          let lineItems = jobDetail.line_items || jobDetail.materials ||
+                          jobDetail.invoice_items || jobDetail.services || [];
+
+          // If not found, try fetching the invoice
+          if (!lineItems.length) {
+            const invoiceId = jobDetail.invoice?.id || jobDetail.invoice_id ||
+                              jobDetail.outstanding_invoice?.id;
+            if (invoiceId) {
+              const invResp = await fetch(`${HCP_BASE}/invoices/${invoiceId}`, { headers });
+              if (invResp.ok) {
+                const inv = await invResp.json();
+                lineItems = inv.line_items || inv.items || inv.materials || [];
+                if (!debugInfo.firstInvoiceSample && lineItems.length) {
+                  debugInfo.firstInvoiceSample = JSON.stringify(inv).substring(0, 800);
+                }
+              }
+            }
+          }
+
+          return { ...jobDetail, line_items: lineItems };
         } catch { return job; }
       })
     );
@@ -175,7 +206,8 @@ exports.handler = async (event) => {
         statusesSeen,
         pending,
         unmatched,
-        debugLineItem: sampleLineItem ? JSON.stringify(sampleLineItem).substring(0, 600) : 'no line items found',
+        debugInfo,
+      debugLineItem: sampleLineItem ? JSON.stringify(sampleLineItem).substring(0, 600) : 'no line items found',
         syncedAt:    new Date().toISOString(),
       })
     };

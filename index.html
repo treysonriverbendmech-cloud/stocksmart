@@ -2165,9 +2165,14 @@ window.runHCPSync = async function() {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
-    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugLineItem='' } = result;
+    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugLineItem='', debugInfo={} } = result;
     const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Statuses: ${statusesSeen.join(', ')}</span>` : '';
-    const debugNote = debugLineItem ? `<br><span style="font-size:10px;color:var(--text-muted)">Sample line item: ${xss(debugLineItem)}</span>` : '';
+    const debugNote = [
+      debugLineItem ? `Line item: ${debugLineItem}` : '',
+      debugInfo.firstJobDetailKeys ? `Job fields: ${debugInfo.firstJobDetailKeys.join(', ')}` : '',
+      debugInfo.firstJobSample ? `Job sample: ${debugInfo.firstJobSample}` : '',
+      debugInfo.firstInvoiceSample ? `Invoice sample: ${debugInfo.firstInvoiceSample}` : '',
+    ].filter(Boolean).map(t=>`<br><span style="font-size:10px;color:var(--text-muted)">${xss(t)}</span>`).join('');
     const unmatchedNote = unmatched.length > 0
       ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
       : '';
