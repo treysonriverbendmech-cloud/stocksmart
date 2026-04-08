@@ -1392,17 +1392,30 @@ function updateBoxFilter() {
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 window.applyFilters = function() {
-  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const raw    = document.getElementById('searchInput').value.trim().toLowerCase();
   const cat    = document.getElementById('catFilter').value;
   const subcat = document.getElementById('subcatFilter').value;
   const boxId  = document.getElementById('boxFilter').value;
+
+  // Strip spaces and dots for fuzzy comparison — "5 MFD" ↔ "5MFD", "M.F.D" ↔ "MFD"
+  const norm = s => (s||'').toLowerCase().replace(/[\s.]+/g, '');
+
+  // Split into individual tokens so "dual run 45" checks each word separately
+  const tokens = raw.split(/\s+/).filter(Boolean);
+
   filtered = parts.filter(p => {
-    const kw = (p.keywords||[]).join(' ').toLowerCase();
-    const txt = [p.name,p.partNumber,p.notes,p.category,p.subcategory,kw].join(' ').toLowerCase();
-    return (!q || txt.includes(q))
-      && (!cat    || p.category   === cat)
-      && (!subcat || p.subcategory === subcat)
-      && (!boxId  || p.boxId === boxId);
+    if (cat    && p.category    !== cat)    return false;
+    if (subcat && p.subcategory !== subcat) return false;
+    if (boxId  && p.boxId       !== boxId)  return false;
+    if (!raw) return true;
+
+    const kw  = (p.keywords||[]).join(' ').toLowerCase();
+    const txt = [p.name, p.partNumber, p.notes, p.category, p.subcategory, kw].join(' ').toLowerCase();
+    const txtNorm = norm(txt);
+
+    // Every token must match — either as a plain substring OR in the normalized version
+    // This catches: "5 MFD" matching "5MFD", "5mfd" matching "5 MFD", "45/5" matching "45/5 uF"
+    return tokens.every(token => txt.includes(token) || txtNorm.includes(norm(token)));
   });
   renderGrid();
 };
