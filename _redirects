@@ -1,0 +1,6 @@
+# Landing page is the homepage
+/          /landing.html   200
+
+# App lives at /app
+/app       /index.html     200
+/app/*     /index.html     200
