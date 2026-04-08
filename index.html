@@ -1049,15 +1049,14 @@ window.handleEmailAuth = async function() {
 window.handleGoogleSignIn = async function() {
   document.getElementById('authError').style.display = 'none';
   try {
-    // Use redirect on mobile (popup gets blocked), popup on desktop
-    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    if (isMobile) {
-      await signInWithRedirect(auth, googleProvider);
-    } else {
-      await signInWithPopup(auth, googleProvider);
-    }
+    await signInWithPopup(auth, googleProvider);
   } catch(e) {
-    if (e.code !== 'auth/popup-closed-by-user') showAuthError(e.message);
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+      // Popup was blocked — fall back to redirect
+      try { await signInWithRedirect(auth, googleProvider); } catch(e2) { showAuthError(e2.message); }
+    } else if (e.code !== 'auth/cancelled-popup-request') {
+      showAuthError(e.message);
+    }
   }
 };
 
