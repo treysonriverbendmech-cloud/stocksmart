@@ -975,8 +975,9 @@ if ('serviceWorker' in navigator) {
 // ─── Firebase ─────────────────────────────────────────────────────────────────
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
-  getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
-  doc, getDoc, onSnapshot, query, orderBy, where, serverTimestamp
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
+  doc, getDoc, onSnapshot, query, orderBy, where, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
@@ -995,7 +996,10 @@ if (!_cfgRes.ok) {
 }
 const firebaseConfig = await _cfgRes.json();
 const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
+// Enable offline persistence — app loads from IndexedDB cache instantly on repeat opens
+const db   = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
@@ -1330,7 +1334,7 @@ function startListeners() {
     updateBoxFilter(); renderBoxList();
   }, err => { console.error('Firestore boxes:', err); });
 
-  _unsubTxns = onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc')), snap => {
+  _unsubTxns = onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc'), limit(300)), snap => {
     transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }, err => { console.error('Firestore transactions:', err); });
 
