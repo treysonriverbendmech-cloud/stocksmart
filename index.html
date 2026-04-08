@@ -2612,10 +2612,24 @@ window.runHCPSync = async function() {
       debugInfo.totalPages ? `Pages: ${debugInfo.totalPages} · Jobs on p1: ${debugInfo.jobsOnPage1}` : '',
     ].filter(Boolean).map(t=>`<br><span style="font-size:11px;color:var(--text-muted)">${xss(t)}</span>`).join('');
     const unmatchedNote = unmatched.length > 0
-      ? ` · ${unmatched.length} items couldn't be matched (manual parts)`
+      ? ` · <a href="#" onclick="event.preventDefault();document.getElementById('unmatchedList').classList.toggle('hidden')" style="color:var(--amber);text-decoration:underline">${unmatched.length} unmatched items</a>`
       : '';
 
-    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${xss(unmatchedNote)}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}`;
+    const unmatchedRows = unmatched.length > 0
+      ? `<div id="unmatchedList" class="hidden" style="margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
+          <div style="padding:8px 12px;background:var(--surface3);font-size:11px;font-weight:700;color:var(--amber);letter-spacing:0.05em">UNMATCHED ITEMS — not in your inventory</div>
+          ${unmatched.map(u=>`
+            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;gap:8px">
+              <div>
+                <div style="font-weight:600;color:var(--text)">${xss(u.itemName)}</div>
+                <div style="color:var(--text-muted)">Job #${xss(u.jobNumber)} · Part#: ${xss(u.partNumber)}</div>
+              </div>
+              <div style="flex-shrink:0;color:var(--text-muted)">Qty: ${u.quantity}</div>
+            </div>`).join('')}
+        </div>`
+      : '';
+
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
 
     loadHCPPending();
     if (newPending.length > 0) {
