@@ -126,15 +126,21 @@ exports.handler = async (event) => {
       const lineItems   = job.line_items || job.materials || job.invoice_items || [];
 
       for (const item of lineItems) {
-        // Skip labor, tax, discount, and other non-material line items
         const kind = (item.kind || item.type || '').toLowerCase();
+        const nameRaw = item.name || item.description || '';
+        const nameCheck = nameRaw.toLowerCase();
+
+        // Skip non-material kinds (service_charge = labor in HCP)
         if (kind === 'labor' || kind === 'service_charge' || kind === 'discount' || kind === 'tax' || kind === 'fee') continue;
 
-        // Skip by name pattern — tax codes, discounts, fees, shipping
-        const nameCheck = (item.name || item.description || '').toLowerCase();
-        if (/^[a-z]{2}-\s/.test(item.name || '')) continue; // state tax codes like "AR- Arkansas"
+        // Skip by name pattern — tax codes, discounts, and clearly labor items
+        if (/^[a-z]{2}-\s/.test(nameRaw)) continue; // state tax codes like "AR- Arkansas"
         if (nameCheck.includes('sales tax') || nameCheck.includes('tax rate') || kind.includes('tax')) continue;
         if (nameCheck.includes('discount') || nameCheck.startsWith('- ') || (item.unit_price < 0)) continue;
+
+        // Skip labor-named items that somehow slip through as 'material' kind
+        const laborWords = ['labor', 'service call', 'service fee', 'trip charge', 'diagnostic', 'dispatch fee', 'hourly rate', 'maintenance agreement', 'tune up', 'tune-up'];
+        if (laborWords.some(w => nameCheck.includes(w))) continue;
 
         // service_item_id is the pricebook UUID (pbmat_... for materials)
         const materialUuid = item.service_item_id || item.material_uuid || item.pricebook_material_id || '';

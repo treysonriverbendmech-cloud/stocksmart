@@ -20,52 +20,55 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing unmatchedItem or parts' }) };
   }
 
-  // Build a condensed parts list for Claude (name, partNumber, price, category)
   const jobDate = unmatchedItem.completedAt ? new Date(unmatchedItem.completedAt).toISOString().slice(0,10) : null;
+  const hcpPrice = unmatchedItem.unitPrice ? parseFloat(unmatchedItem.unitPrice) : null;
 
   const partsList = parts
     .filter(p => p.name)
     .map(p => {
       const partDate = p.createdAt ? new Date(p.createdAt).toISOString().slice(0,10) : null;
-      const sameDay = jobDate && partDate && partDate === jobDate ? ' | ⭐ ADDED SAME DAY AS JOB' : '';
+      const sameDay = jobDate && partDate && partDate === jobDate ? ' ⭐SAME-DAY' : '';
       const daysDiff = jobDate && partDate ? Math.abs((new Date(jobDate) - new Date(partDate)) / 86400000) : null;
-      const nearDate = daysDiff !== null && daysDiff <= 3 && daysDiff > 0 ? ` | added ${Math.round(daysDiff)}d ${new Date(partDate) < new Date(jobDate) ? 'before' : 'after'} job` : '';
-      return `ID:${p.id} | ${p.name}${p.partNumber ? ' | Part#:'+p.partNumber : ''}${p.price ? ' | $'+parseFloat(p.price).toFixed(2) : ''}${p.category ? ' | '+p.category : ''}${p.boxName ? ' | Loc:'+p.boxName : ''}${sameDay||nearDate}`;
+      const nearDate = daysDiff !== null && daysDiff <= 3 && daysDiff > 0 ? ` [±${Math.round(daysDiff)}d]` : '';
+      const priceMatch = hcpPrice && p.price && Math.abs(parseFloat(p.price) - hcpPrice) < 0.01 ? ' 💰PRICE-MATCH' : '';
+      return `ID:${p.id} | ${p.name}${p.partNumber ? ' | #'+p.partNumber : ''}${p.price ? ' | $'+parseFloat(p.price).toFixed(2) : ''}${p.category ? ' | '+p.category : ''}${p.boxName ? ' | '+p.boxName : ''}${priceMatch}${sameDay||nearDate}`;
     })
     .join('\n');
 
-  const prompt = `You are matching an item from a Housecall Pro job ticket to a part in an HVAC company's inventory.
+  const prompt = `You are an expert HVAC parts matcher. Match this Housecall Pro invoice item to the best inventory part.
 
-UNMATCHED HCP ITEM:
+HCP ITEM:
 Name: "${unmatchedItem.itemName}"
-Part#: "${unmatchedItem.partNumber || 'none'}"
-Price: ${unmatchedItem.unitPrice ? '$' + parseFloat(unmatchedItem.unitPrice).toFixed(2) : 'unknown'}
-Qty used: ${unmatchedItem.quantity}
-Job #: ${unmatchedItem.jobNumber}
-Tech: ${unmatchedItem.tech || 'unknown'}
+Part#: ${unmatchedItem.partNumber && unmatchedItem.partNumber !== '—' ? unmatchedItem.partNumber : 'none'}
+Price: ${hcpPrice ? '$' + hcpPrice.toFixed(2) : 'unknown'}
+Qty: ${unmatchedItem.quantity}
+Job#: ${unmatchedItem.jobNumber} | Tech: ${unmatchedItem.tech || 'unknown'}
 
-INVENTORY PARTS:
+INVENTORY (parts marked 💰PRICE-MATCH have the exact same price, ⭐SAME-DAY were added on the same date as the job):
 ${partsList}
 
-Find the best matching inventory part. Use this priority order:
-1. EXACT price match combined with same-day or within 3 days — very strong signal (part was likely bought for this job)
-2. EXACT price match alone — strong signal even if names differ
-3. Name similarity — even if worded differently (e.g. "1/2 copper elbow" ≈ "CxC 90 Elbow 1/2", abbreviations like "JR" could match a longer name)
-4. Part number match
-5. Category match (HVAC parts)
+MATCHING RULES — apply in this order:
+1. 💰PRICE-MATCH + ⭐SAME-DAY → 95% confidence minimum, almost certainly the match
+2. 💰PRICE-MATCH + close name/description → 85%+ confidence
+3. 💰PRICE-MATCH alone (if only 1 part at that price) → 80% confidence
+4. Name similarity → HVAC techs use many abbreviations and brand names:
+   - "Cap 45/5" = "Dual Run Capacitor 45+5 MFD"
+   - "Cond Fan Motor" = "Condenser Fan Motor"
+   - "TXV" = "Thermostatic Expansion Valve"
+   - Partial matches count — match on key specs (size, voltage, amperage, refrigerant type)
+5. Part number match → 90%+
+6. Same category/type with similar price → 60%+
 
-Parts marked ⭐ ADDED SAME DAY AS JOB are very likely the match — a tech scanned a receipt the same day they used the part on a job.
-Be willing to suggest a match at 70%+ confidence if price + date align, even if names differ completely.
+Be AGGRESSIVE — if price matches OR date is within 3 days AND description is plausibly the same part, suggest it at 70%+.
+Only return null if there is genuinely no reasonable match.
 
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON:
 {
-  "matchId": "the part ID from inventory or null if no good match",
-  "matchName": "the matched part name or null",
+  "matchId": "the exact part ID from inventory, or null",
+  "matchName": "the matched part name, or null",
   "confidence": 0-100,
-  "reason": "brief explanation including price match info if relevant"
-}
-
-If no inventory part is a reasonable match, return matchId: null with confidence: 0.`;
+  "reason": "one sentence: what matched and why (mention price/date if relevant)"
+}`;
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -90,7 +93,6 @@ If no inventory part is a reasonable match, return matchId: null with confidence
     const data = await resp.json();
     const text = data.content?.[0]?.text || '{}';
 
-    // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return { statusCode: 200, body: JSON.stringify({ matchId: null, confidence: 0, reason: 'No match found' }) };

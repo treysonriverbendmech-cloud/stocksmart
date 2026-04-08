@@ -1223,7 +1223,7 @@ onAuthStateChanged(auth, async user => {
     currentUserData = adminData;
     adminUid = user.uid;
     hideAllScreens();
-    loadHCPPending(); loadHCPUnmatched();
+    // badges auto-update via onSnapshot started in hideAllScreens → startListeners
     return;
   }
 
@@ -1251,7 +1251,7 @@ onAuthStateChanged(auth, async user => {
         unsub();
         currentUserData = snap.data();
         hideAllScreens();
-        loadHCPPending(); loadHCPUnmatched();
+        // badges auto-update via onSnapshot started in hideAllScreens → startListeners
       }
     });
     return;
@@ -1260,7 +1260,7 @@ onAuthStateChanged(auth, async user => {
   // Approved — show app
   currentUserData = userData;
   hideAllScreens();
-  loadHCPPending(); loadHCPUnmatched();
+  // badges auto-update via onSnapshot started in hideAllScreens → startListeners
 });
 
 // ─── Default subcategories ────────────────────────────────────────────────────
@@ -1320,7 +1320,7 @@ await loadSettings();
 applyBranding();
 
 // ─── Firestore listeners — started only after user is authenticated & approved ──
-let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null;
+let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null, _unsubHcpPending = null, _unsubHcpUnmatched = null;
 
 function startListeners() {
   if (_unsubParts) return; // already running
@@ -1338,13 +1338,32 @@ function startListeners() {
     transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }, err => { console.error('Firestore transactions:', err); });
 
+  // Live badge updates — react instantly when sync adds/approves items
+  _unsubHcpPending = onSnapshot(collection(db,'hcpPending'), snap => {
+    hcpPendingItems = snap.docs
+      .map(d => ({ _id: d.id, ...d.data() }))
+      .filter(i => i.status === 'pending')
+      .sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
+    updateHCPBadge();
+  }, err => console.warn('hcpPending listener:', err));
+
+  _unsubHcpUnmatched = onSnapshot(collection(db,'hcpUnmatched'), snap => {
+    hcpUnmatchedItems = snap.docs
+      .map(d => ({ _id: d.id, ...d.data() }))
+      .filter(i => i.status === 'pending')
+      .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    updateUnmatchedBadge();
+  }, err => console.warn('hcpUnmatched listener:', err));
+
   seedDefaultLocations();
 }
 
 function stopListeners() {
-  if (_unsubParts) { _unsubParts(); _unsubParts = null; }
-  if (_unsubBoxes) { _unsubBoxes(); _unsubBoxes = null; }
-  if (_unsubTxns)  { _unsubTxns();  _unsubTxns  = null; }
+  if (_unsubParts)        { _unsubParts();        _unsubParts        = null; }
+  if (_unsubBoxes)        { _unsubBoxes();        _unsubBoxes        = null; }
+  if (_unsubTxns)         { _unsubTxns();         _unsubTxns         = null; }
+  if (_unsubHcpPending)   { _unsubHcpPending();   _unsubHcpPending   = null; }
+  if (_unsubHcpUnmatched) { _unsubHcpUnmatched(); _unsubHcpUnmatched = null; }
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -2100,11 +2119,34 @@ window.scanReceipt = async function() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error||'Scan failed');
     receiptItems = (json.items||[]).map((item,i) => {
-      // Check for duplicates by part number
-      const dup = item.partNumber
-        ? parts.find(p => p.partNumber && p.partNumber.toLowerCase()===item.partNumber.toLowerCase())
-        : null;
-      return { ...item, _id:i, _checked:true, _dup: dup||null };
+      // Try to find an existing inventory match (part# → price → name keywords)
+      let inventoryMatch = null;
+      let matchType = null;
+
+      // 1. Part number exact match
+      if (item.partNumber) {
+        const m = parts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
+        if (m) { inventoryMatch = m; matchType = 'partNumber'; }
+      }
+      // 2. Exact price match — only if unique
+      if (!inventoryMatch && item.price > 0) {
+        const priceMatches = parts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
+        if (priceMatches.length === 1) { inventoryMatch = priceMatches[0]; matchType = 'price'; }
+      }
+      // 3. Name keyword match — need 2+ significant words to match
+      if (!inventoryMatch) {
+        const stopW = new Set(['the','and','for','with','each','unit','per']);
+        const words = (item.name||'').toLowerCase().split(/[\s\-\/,]+/).filter(w=>w.length>=3&&!stopW.has(w));
+        if (words.length >= 2) {
+          const m = parts.find(p => {
+            const pn = (p.name||'').toLowerCase();
+            return words.filter(w=>pn.includes(w)).length >= Math.min(2, Math.ceil(words.length*0.5));
+          });
+          if (m) { inventoryMatch = m; matchType = 'name'; }
+        }
+      }
+
+      return { ...item, _id:i, _checked:true, _dup: inventoryMatch||null, _matchType: matchType };
     });
     renderReceiptItems();
     document.getElementById('receiptResults').classList.remove('hidden');
@@ -2118,25 +2160,68 @@ window.scanReceipt = async function() {
 function renderReceiptItems() {
   const el=document.getElementById('receiptItemList');
   if (!receiptItems.length) { el.innerHTML='<p style="color:var(--text-muted);font-size:14px">No items found. Try a clearer photo.</p>'; return; }
-  el.innerHTML = receiptItems.map(item=>`
+  el.innerHTML = receiptItems.map(item=>{
+    const matchTypeLabel = item._matchType === 'partNumber' ? 'Part # match' : item._matchType === 'price' ? 'Exact price match' : 'Name match';
+    return `
     <div class="receipt-item ${item._dup?'dup':''}">
       <input type="checkbox" id="rc_${item._id}" ${item._checked?'checked':''} onchange="toggleReceiptItem(${item._id})" style="margin-top:2px;width:16px;height:16px;cursor:pointer;flex-shrink:0">
-      <div class="receipt-item-info">
-        <div class="receipt-item-name">${xss(item.name||'Unknown Item')} ${item._dup?`<span class="dup-badge">⚠ Possible Duplicate</span>`:''}</div>
+      <div class="receipt-item-info" style="flex:1;min-width:0">
+        <div class="receipt-item-name">${xss(item.name||'Unknown Item')} ${item._dup?`<span class="dup-badge">🔗 In Inventory</span>`:''}</div>
         <div class="receipt-item-meta">
           ${item.partNumber?`Part #: <strong>${xss(item.partNumber)}</strong> · `:''}
           Qty: <strong>${item.quantity||1}</strong> ·
           Price: <strong>$${(+(item.price||0)).toFixed(2)}</strong>
           ${item.category?` · ${xss(item.category)}`:''}
-          ${item._dup?`<br><span style="color:var(--amber)">Matches: ${xss(item._dup.name)} (${xss(item._dup.partNumber||'no part#')})</span>`:''}
         </div>
+        ${item._dup ? `
+        <div style="margin-top:6px;padding:8px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);border-radius:6px;font-size:12px">
+          <div style="color:var(--accent);font-weight:600;margin-bottom:4px">🔗 ${matchTypeLabel} → ${xss(item._dup.name)}</div>
+          <div style="color:var(--text-muted)">Current stock: ${item._dup.quantity||0} · ${xss(item._dup.boxName||'No location')}</div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn btn-primary btn-sm" style="flex:2;font-size:12px" onclick="receiptDeductExisting(${item._id})">− Deduct from inventory</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:12px" onclick="receiptAddNew(${item._id})">+ Add new</button>
+          </div>
+        </div>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 window.toggleReceiptItem = function(id) {
   const item = receiptItems.find(i=>i._id===id);
   if (item) item._checked = !item._checked;
+};
+
+// Deduct from the matched existing inventory part (instead of adding new)
+window.receiptDeductExisting = async function(id) {
+  const item = receiptItems.find(i=>i._id===id);
+  if (!item || !item._dup) return;
+  const part = parts.find(p=>p.id===item._dup.id);
+  if (!part) { toast('Part not found','err'); return; }
+  const qty = parseInt(item.quantity)||1;
+  const newQty = Math.max(0, (parseInt(part.quantity)||0) - qty);
+  try {
+    await updateDoc(doc(db,'parts',part.id), { quantity: newQty, updatedAt: serverTimestamp() });
+    await addDoc(collection(db,'transactions'), {
+      partId: part.id, partName: part.name, partNumber: part.partNumber||'',
+      type: 'use', quantity: qty,
+      pulledBy: currentUser?.displayName || currentUser?.email || 'Receipt scan',
+      jobRef: 'Receipt scan', locationId: part.boxId||null, locationName: part.boxName||null,
+      createdAt: serverTimestamp()
+    });
+    toast(`Deducted ${qty} × ${part.name} — ${newQty} remaining`, 'ok');
+    // Remove item from list
+    receiptItems = receiptItems.filter(i=>i._id!==id);
+    renderReceiptItems();
+    if (!receiptItems.length) closeModal('receiptModal');
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
+// Override: add the scanned item as NEW even though a match exists
+window.receiptAddNew = function(id) {
+  const item = receiptItems.find(i=>i._id===id);
+  if (item) { item._dup = null; item._matchType = null; item._checked = true; }
+  renderReceiptItems();
 };
 
 window.confirmReceiptAdd = async function() {
@@ -2603,16 +2688,17 @@ window.runHCPSync = async function() {
       });
     } catch(e) { console.warn('Could not load tech locations:', e.message); }
 
-    // Build set of already-processed job IDs to prevent duplicate deductions
+    // Build set of already-processed job IDs — check BOTH hcpPending and the
+    // permanent hcpSyncedJobs record so clearing the queue doesn't re-sync old jobs
     const processedJobIds = new Set();
     try {
-      const existingSnap = await getDocs(collection(db,'hcpPending'));
-      existingSnap.docs.forEach(d => {
-        const data = d.data();
-        // Skip jobs that are already pending or approved — don't re-queue them
-        if (data.jobId) processedJobIds.add(data.jobId);
-      });
-    } catch(e) { console.warn('Could not load existing pending:', e.message); }
+      const [pendingSnap, syncedSnap] = await Promise.all([
+        getDocs(collection(db,'hcpPending')),
+        getDocs(collection(db,'hcpSyncedJobs'))
+      ]);
+      pendingSnap.docs.forEach(d => { if (d.data().jobId) processedJobIds.add(d.data().jobId); });
+      syncedSnap.docs.forEach(d => { processedJobIds.add(d.id); }); // doc ID is the jobId
+    } catch(e) { console.warn('Could not load processed job IDs:', e.message); }
 
     // Store pending deductions in Firestore, preferring tech's van location
     const newPending = result.pending || [];
@@ -2656,6 +2742,12 @@ window.runHCPSync = async function() {
       }
 
       await addDoc(collection(db,'hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
+      // Permanently mark this jobId as processed so clearing hcpPending never causes re-sync
+      if (item.jobId) {
+        await setDoc(doc(db,'hcpSyncedJobs', String(item.jobId)), {
+          syncedAt: serverTimestamp(), tech: finalItem.tech || ''
+        }, { merge: true });
+      }
     }
 
     // Save unmatched items to Firestore using deterministic ID to prevent duplicates
@@ -2664,10 +2756,14 @@ window.runHCPSync = async function() {
       // Build a stable doc ID from jobId + itemName so re-syncing doesn't duplicate
       const safeId = `${item.jobId||item.jobNumber}_${(item.itemName||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40)}`;
       await setDoc(doc(db,'hcpUnmatched', safeId), {
-        ...item,
-        status: 'pending',
-        createdAt: serverTimestamp()
+        ...item, status: 'pending', createdAt: serverTimestamp()
       }, { merge: true });
+      // Also mark jobId as synced so these unmatched jobs don't repeat next sync
+      if (item.jobId) {
+        await setDoc(doc(db,'hcpSyncedJobs', String(item.jobId)), {
+          syncedAt: serverTimestamp(), tech: item.tech || ''
+        }, { merge: true });
+      }
     }
 
     // Update lastSyncAt
@@ -2701,7 +2797,7 @@ window.runHCPSync = async function() {
     const dupeNote = skippedDupes > 0 ? ` · ${skippedDupes} already processed` : '';
     statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length - skippedDupes} new deductions queued${xss(dupeNote)}${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
 
-    loadHCPPending(); loadHCPUnmatched();
+    // Badges auto-update via onSnapshot — no manual reload needed
     if (newPending.length > 0) {
       toast(`${newPending.length} pending deductions from HCP jobs`, 'ok');
     } else {
@@ -2831,11 +2927,9 @@ window.approveHCPDeduction = async function(pendingId) {
 };
 
 // ─── Unmatched Items Reconciliation ──────────────────────────────────────────
-window.openUnmatched = async function() {
+window.openUnmatched = function() {
   showModal('unmatchedModal');
-  document.getElementById('unmatchedList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">Loading…</div>';
-  await loadHCPUnmatched();
-  renderUnmatchedList();
+  renderUnmatchedList(); // data is always fresh via onSnapshot
 };
 
 function renderUnmatchedList() {
@@ -2902,6 +2996,36 @@ window.aiSuggestMatch = async function(id) {
             </div>`).join('')}
           ${overflow > 0 ? `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:6px">+${overflow} more — use Manual Match to search all</div>` : ''}
           <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px" onclick="document.getElementById('aiResult_${id}').style.display='none'">Cancel</button>`;
+        return;
+      }
+    }
+
+    // Name keyword pre-filter — catch obvious matches before calling AI
+    // Split HCP item name into meaningful words (3+ chars, skip common words)
+    const stopWords = new Set(['the','and','for','with','from','this','that','are','was','per','unit','each']);
+    const hcpWords = (item.itemName||'').toLowerCase().split(/[\s\-\/,]+/)
+      .filter(w => w.length >= 3 && !stopWords.has(w));
+    if (hcpWords.length >= 2) {
+      const keywordMatches = parts.filter(p => {
+        const pName = (p.name||'').toLowerCase();
+        const matched = hcpWords.filter(w => pName.includes(w));
+        return matched.length >= Math.min(2, Math.ceil(hcpWords.length * 0.5));
+      });
+      if (keywordMatches.length === 1) {
+        const match = keywordMatches[0];
+        const hcpPrice = item.unitPrice ? parseFloat(item.unitPrice).toFixed(2) : null;
+        const priceAligns = hcpPrice && match.price && parseFloat(match.price).toFixed(2) === hcpPrice;
+        const confidence = priceAligns ? 88 : 72;
+        resultEl.innerHTML = `
+          <div style="margin-bottom:8px">
+            <div style="font-weight:700;color:var(--text)">🎯 ${xss(match.name)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Name keyword match${priceAligns ? ' + exact price $'+hcpPrice : ''}</div>
+            <div style="font-size:11px;margin-top:4px;color:var(--green);font-weight:600">${confidence}% confident</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-success btn-sm" style="flex:2" onclick="approveUnmatchedMatch('${id}','${match.id}')">✓ Approve & Deduct</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">✕ Dismiss</button>
+          </div>`;
         return;
       }
     }
