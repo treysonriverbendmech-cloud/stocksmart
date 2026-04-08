@@ -2872,7 +2872,7 @@ window.aiSuggestMatch = async function(id) {
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({
         unmatchedItem: item,
-        parts: parts.map(p => ({ id:p.id, name:p.name, partNumber:p.partNumber||'', price:p.price||0, category:p.category||'', boxName:p.boxName||'' }))
+        parts: parts.map(p => ({ id:p.id, name:p.name, partNumber:p.partNumber||'', price:p.price||0, category:p.category||'', boxName:p.boxName||'', createdAt: p.createdAt?.toDate?.()?.toISOString() || null }))
       })
     });
     const result = await resp.json();

@@ -21,9 +21,17 @@ exports.handler = async (event) => {
   }
 
   // Build a condensed parts list for Claude (name, partNumber, price, category)
+  const jobDate = unmatchedItem.completedAt ? new Date(unmatchedItem.completedAt).toISOString().slice(0,10) : null;
+
   const partsList = parts
     .filter(p => p.name)
-    .map(p => `ID:${p.id} | ${p.name}${p.partNumber ? ' | Part#:'+p.partNumber : ''}${p.price ? ' | $'+parseFloat(p.price).toFixed(2) : ''}${p.category ? ' | '+p.category : ''}${p.boxName ? ' | Loc:'+p.boxName : ''}`)
+    .map(p => {
+      const partDate = p.createdAt ? new Date(p.createdAt).toISOString().slice(0,10) : null;
+      const sameDay = jobDate && partDate && partDate === jobDate ? ' | ⭐ ADDED SAME DAY AS JOB' : '';
+      const daysDiff = jobDate && partDate ? Math.abs((new Date(jobDate) - new Date(partDate)) / 86400000) : null;
+      const nearDate = daysDiff !== null && daysDiff <= 3 && daysDiff > 0 ? ` | added ${Math.round(daysDiff)}d ${new Date(partDate) < new Date(jobDate) ? 'before' : 'after'} job` : '';
+      return `ID:${p.id} | ${p.name}${p.partNumber ? ' | Part#:'+p.partNumber : ''}${p.price ? ' | $'+parseFloat(p.price).toFixed(2) : ''}${p.category ? ' | '+p.category : ''}${p.boxName ? ' | Loc:'+p.boxName : ''}${sameDay||nearDate}`;
+    })
     .join('\n');
 
   const prompt = `You are matching an item from a Housecall Pro job ticket to a part in an HVAC company's inventory.
@@ -40,12 +48,14 @@ INVENTORY PARTS:
 ${partsList}
 
 Find the best matching inventory part. Use this priority order:
-1. EXACT price match — if only one inventory part has the same price, that is very likely the match even if names differ
-2. Name similarity — even if worded differently (e.g. "1/2 copper elbow" ≈ "CxC 90 Elbow 1/2", abbreviations like "JR" could match a longer name)
-3. Part number match
-4. Category match (HVAC parts)
+1. EXACT price match combined with same-day or within 3 days — very strong signal (part was likely bought for this job)
+2. EXACT price match alone — strong signal even if names differ
+3. Name similarity — even if worded differently (e.g. "1/2 copper elbow" ≈ "CxC 90 Elbow 1/2", abbreviations like "JR" could match a longer name)
+4. Part number match
+5. Category match (HVAC parts)
 
-Be willing to suggest a match at lower confidence (40-60%) if the price matches exactly, since techs often use shorthand or nicknames on job tickets.
+Parts marked ⭐ ADDED SAME DAY AS JOB are very likely the match — a tech scanned a receipt the same day they used the part on a job.
+Be willing to suggest a match at 70%+ confidence if price + date align, even if names differ completely.
 
 Respond with ONLY valid JSON in this exact format:
 {
