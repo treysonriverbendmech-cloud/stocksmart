@@ -2847,6 +2847,20 @@ window.aiSuggestMatch = async function(id) {
             <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">✕ Dismiss</button>
           </div>`;
         return;
+      } else if (priceMatches.length > 1) {
+        // Multiple price matches — show them all to pick from
+        resultEl.innerHTML = `
+          <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">${priceMatches.length} parts match $${hcpPrice} — pick the right one:</div>
+          ${priceMatches.map(m => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--surface);border-radius:var(--radius-sm);margin-bottom:6px;gap:8px">
+              <div>
+                <div style="font-weight:600;font-size:13px;color:var(--text)">${xss(m.name)}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${xss(m.boxName||'No location')}${m.partNumber?' · '+xss(m.partNumber):''}</div>
+              </div>
+              <button class="btn btn-success btn-sm" onclick="approveUnmatchedMatch('${id}','${m.id}')">✓ Match</button>
+            </div>`).join('')}
+          <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px" onclick="document.getElementById('aiResult_${id}').style.display='none'">Cancel</button>`;
+        return;
       }
     }
 
