@@ -2580,9 +2580,24 @@ window.runHCPSync = async function() {
       });
     } catch(e) { console.warn('Could not load tech locations:', e.message); }
 
+    // Build set of already-processed job IDs to prevent duplicate deductions
+    const processedJobIds = new Set();
+    try {
+      const existingSnap = await getDocs(collection(db,'hcpPending'));
+      existingSnap.docs.forEach(d => {
+        const data = d.data();
+        // Skip jobs that are already pending or approved — don't re-queue them
+        if (data.jobId) processedJobIds.add(data.jobId);
+      });
+    } catch(e) { console.warn('Could not load existing pending:', e.message); }
+
     // Store pending deductions in Firestore, preferring tech's van location
     const newPending = result.pending || [];
+    let skippedDupes = 0;
     for (const item of newPending) {
+      // Skip if this job was already processed (prevents double deductions on re-sync)
+      if (processedJobIds.has(item.jobId)) { skippedDupes++; continue; }
+
       let finalItem = { ...item };
 
       // Try to find which location this tech maps to
@@ -2660,7 +2675,8 @@ window.runHCPSync = async function() {
         </div>`
       : '';
 
-    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
+    const dupeNote = skippedDupes > 0 ? ` · ${skippedDupes} already processed` : '';
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length - skippedDupes} new deductions queued${xss(dupeNote)}${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
 
     loadHCPPending(); loadHCPUnmatched();
     if (newPending.length > 0) {
