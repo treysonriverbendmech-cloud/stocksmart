@@ -2620,22 +2620,16 @@ window.runHCPSync = async function() {
       await addDoc(collection(db,'hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
     }
 
-    // Save unmatched items to Firestore so they persist across refreshes
+    // Save unmatched items to Firestore using deterministic ID to prevent duplicates
     const { unmatched: unmatchedItems = [] } = result;
     for (const item of unmatchedItems) {
-      // Avoid duplicates — check if same item+job already exists
-      const existing = await getDocs(query(
-        collection(db,'hcpUnmatched'),
-        where('jobNumber','==', String(item.jobNumber)),
-        where('itemName','==', item.itemName)
-      ));
-      if (existing.empty) {
-        await addDoc(collection(db,'hcpUnmatched'), {
-          ...item,
-          status: 'pending',
-          createdAt: serverTimestamp()
-        });
-      }
+      // Build a stable doc ID from jobId + itemName so re-syncing doesn't duplicate
+      const safeId = `${item.jobId||item.jobNumber}_${(item.itemName||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40)}`;
+      await setDoc(doc(db,'hcpUnmatched', safeId), {
+        ...item,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      }, { merge: true });
     }
 
     // Update lastSyncAt
