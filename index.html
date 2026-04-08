@@ -314,6 +314,7 @@
     @media (max-width: 640px) {
       .header-desktop-btns { display: none !important; }
       .hamburger { display: flex; }
+      .btn-mobile-add { display: inline-flex !important; }
     }
   </style>
 </head>
@@ -415,6 +416,11 @@
           Add Part
         </button>
       </div>
+      <!-- Add Part always visible on mobile -->
+      <button class="btn btn-primary btn-mobile-add" onclick="openAdd()" style="display:none;align-items:center;gap:6px;padding:9px 14px;font-size:14px">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Add Part
+      </button>
       <!-- Mobile hamburger -->
       <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
