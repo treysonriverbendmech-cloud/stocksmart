@@ -2798,9 +2798,11 @@ window.approveHCPDeduction = async function(pendingId) {
 };
 
 // ─── Unmatched Items Reconciliation ──────────────────────────────────────────
-window.openUnmatched = function() {
-  renderUnmatchedList();
+window.openUnmatched = async function() {
   showModal('unmatchedModal');
+  document.getElementById('unmatchedList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  await loadHCPUnmatched();
+  renderUnmatchedList();
 };
 
 function renderUnmatchedList() {
