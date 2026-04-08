@@ -2830,6 +2830,26 @@ window.aiSuggestMatch = async function(id) {
   resultEl.innerHTML = '<span style="color:var(--text-muted)">🤖 Analyzing…</span>';
 
   try {
+    // Client-side price pre-filter before calling AI
+    if (item.unitPrice && parseFloat(item.unitPrice) > 0) {
+      const hcpPrice = parseFloat(item.unitPrice).toFixed(2);
+      const priceMatches = parts.filter(p => p.price && parseFloat(p.price).toFixed(2) === hcpPrice);
+      if (priceMatches.length === 1) {
+        const match = priceMatches[0];
+        resultEl.innerHTML = `
+          <div style="margin-bottom:8px">
+            <div style="font-weight:700;color:var(--text)">🎯 ${xss(match.name)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Exact price match: $${hcpPrice} — only part in inventory at this price</div>
+            <div style="font-size:11px;margin-top:4px;color:var(--green);font-weight:600">85% confident</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-success btn-sm" style="flex:2" onclick="approveUnmatchedMatch('${id}','${match.id}')">✓ Approve & Deduct</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">✕ Dismiss</button>
+          </div>`;
+        return;
+      }
+    }
+
     const resp = await fetch('/.netlify/functions/ai-match', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
