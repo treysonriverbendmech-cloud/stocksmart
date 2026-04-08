@@ -126,13 +126,15 @@ exports.handler = async (event) => {
       const lineItems   = job.line_items || job.materials || job.invoice_items || [];
 
       for (const item of lineItems) {
-        // Skip labor, tax, and other non-material line items
+        // Skip labor, tax, discount, and other non-material line items
         const kind = (item.kind || item.type || '').toLowerCase();
-        if (kind === 'labor' || kind === 'service_charge' || kind === 'discount' || kind === 'tax') continue;
+        if (kind === 'labor' || kind === 'service_charge' || kind === 'discount' || kind === 'tax' || kind === 'fee') continue;
 
-        // Skip tax line items by name pattern (e.g. "AR- Arkansas", "TX- Texas", "Sales Tax")
+        // Skip by name pattern — tax codes, discounts, fees, shipping
         const nameCheck = (item.name || item.description || '').toLowerCase();
-        if (/^[a-z]{2}-\s/.test(item.name || '') || nameCheck.includes('sales tax') || nameCheck.includes('tax rate') || kind.includes('tax')) continue;
+        if (/^[a-z]{2}-\s/.test(item.name || '')) continue; // state tax codes like "AR- Arkansas"
+        if (nameCheck.includes('sales tax') || nameCheck.includes('tax rate') || kind.includes('tax')) continue;
+        if (nameCheck.includes('discount') || nameCheck.startsWith('- ') || (item.unit_price < 0)) continue;
 
         // service_item_id is the pricebook UUID (pbmat_... for materials)
         const materialUuid = item.service_item_id || item.material_uuid || item.pricebook_material_id || '';
