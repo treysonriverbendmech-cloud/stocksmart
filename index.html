@@ -1001,6 +1001,7 @@ const googleProvider = new GoogleAuthProvider();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
+let currentUserData = null; // Firestore user record — has .role and .locationId
 
 function showLoginScreen(show) {
   document.getElementById('loginScreen').style.display = show ? 'flex' : 'none';
@@ -1213,13 +1214,9 @@ onAuthStateChanged(auth, async user => {
   if (firstUser) {
     // First person to log in becomes admin, auto-approved
     await setDoc(doc(db, 'settings', 'admin'), { uid: user.uid, email: user.email });
-    await setDoc(userRef, {
-      email: user.email,
-      displayName: user.displayName || user.email,
-      role: 'admin',
-      status: 'approved',
-      createdAt: serverTimestamp()
-    }, { merge: true });
+    const adminData = { email: user.email, displayName: user.displayName || user.email, role: 'admin', status: 'approved', createdAt: serverTimestamp() };
+    await setDoc(userRef, adminData, { merge: true });
+    currentUserData = adminData;
     adminUid = user.uid;
     hideAllScreens();
     loadHCPPending(); loadHCPUnmatched();
@@ -1248,6 +1245,7 @@ onAuthStateChanged(auth, async user => {
     const unsub = onSnapshot(userRef, snap => {
       if (snap.exists() && snap.data().status === 'approved') {
         unsub();
+        currentUserData = snap.data();
         hideAllScreens();
         loadHCPPending(); loadHCPUnmatched();
       }
@@ -1256,6 +1254,7 @@ onAuthStateChanged(auth, async user => {
   }
 
   // Approved — show app
+  currentUserData = userData;
   hideAllScreens();
   loadHCPPending(); loadHCPUnmatched();
 });
@@ -1737,6 +1736,19 @@ window.deleteItem = async function(id) {
 // ─── Qty / Transaction modal ──────────────────────────────────────────────────
 window.openQty = function(partId, type) {
   const p = parts.find(i=>i.id===partId); if(!p) return;
+
+  // Location guard — techs can only pull from their own van
+  if (type === 'use' && currentUserData && currentUserData.role !== 'admin' && currentUser && currentUser.uid !== adminUid) {
+    const myLocationId = currentUserData.locationId || null;
+    const partLocationId = p.boxId || null;
+    if (myLocationId && partLocationId && myLocationId !== partLocationId) {
+      const myLoc  = boxes.find(b => b.id === myLocationId);
+      const partLoc = boxes.find(b => b.id === partLocationId);
+      toast(`This part is in ${partLoc ? partLoc.name : 'another location'} — you can only pull from ${myLoc ? myLoc.name : 'your own van'}`, 'err');
+      return;
+    }
+  }
+
   const pUnit = p.trackUnit || (p.isRefrigerant ? 'lbs' : null);
   qtyContext = { partId, type, currentQty: parseInt(p.quantity)||0, trackUnit: pUnit };
   qtyDelta = 1;
