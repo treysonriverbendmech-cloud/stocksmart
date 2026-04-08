@@ -31,24 +31,28 @@ exports.handler = async (event) => {
 UNMATCHED HCP ITEM:
 Name: "${unmatchedItem.itemName}"
 Part#: "${unmatchedItem.partNumber || 'none'}"
+Price: ${unmatchedItem.unitPrice ? '$' + parseFloat(unmatchedItem.unitPrice).toFixed(2) : 'unknown'}
 Qty used: ${unmatchedItem.quantity}
 Job #: ${unmatchedItem.jobNumber}
+Tech: ${unmatchedItem.tech || 'unknown'}
 
 INVENTORY PARTS:
 ${partsList}
 
-Find the best matching inventory part. Consider:
-- Name similarity (even if worded differently, e.g. "1/2 copper elbow" ≈ "CxC 90 Elbow 1/2")
-- Part number match if available
-- Price similarity
-- Category match (HVAC parts)
+Find the best matching inventory part. Use this priority order:
+1. EXACT price match — if only one inventory part has the same price, that is very likely the match even if names differ
+2. Name similarity — even if worded differently (e.g. "1/2 copper elbow" ≈ "CxC 90 Elbow 1/2", abbreviations like "JR" could match a longer name)
+3. Part number match
+4. Category match (HVAC parts)
+
+Be willing to suggest a match at lower confidence (40-60%) if the price matches exactly, since techs often use shorthand or nicknames on job tickets.
 
 Respond with ONLY valid JSON in this exact format:
 {
   "matchId": "the part ID from inventory or null if no good match",
   "matchName": "the matched part name or null",
   "confidence": 0-100,
-  "reason": "brief explanation of why this matches"
+  "reason": "brief explanation including price match info if relevant"
 }
 
 If no inventory part is a reasonable match, return matchId: null with confidence: 0.`;
