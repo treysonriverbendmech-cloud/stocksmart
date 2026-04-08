@@ -168,10 +168,15 @@ exports.handler = async (event) => {
           });
         } else if (itemName && itemName !== 'Unknown') {
           unmatched.push({
-            jobNumber: jobNum,
+            jobNumber:   jobNum,
+            jobId:       job.id,
             itemName,
-            partNumber: partNum || materialUuid || '—',
-            quantity:  qty,
+            partNumber:  partNum || '—',
+            hcpUuid:     materialUuid || '',
+            quantity:    qty,
+            unitPrice,
+            tech,
+            completedAt,
           });
         }
       }

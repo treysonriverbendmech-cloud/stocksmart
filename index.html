@@ -402,6 +402,7 @@
         <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
         <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
         <button class="btn btn-ghost btn-sm" id="hcpPendingNavBtn" onclick="openHCPPending()" title="HCP Pending" style="display:none">🔗 HCP <span id="hcpPendingBadge" style="background:var(--red);color:#fff;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
+        <button class="btn btn-amber btn-sm" id="unmatchedNavBtn" onclick="openUnmatched()" title="Unmatched Items" style="display:none">⚠️ Unmatched <span id="unmatchedBadge" style="background:var(--amber);color:#000;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
         <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
@@ -431,6 +432,7 @@
   <button class="nav-item" onclick="openReceipt();closeNav()">📋 Scan Receipt</button>
   <button class="nav-item" onclick="openReports();closeNav()">📊 Reports</button>
   <button class="nav-item" id="hcpPendingNavBtnMobile" onclick="openHCPPending();closeNav()" style="display:none">🔗 HCP Pending</button>
+  <button class="nav-item" id="unmatchedNavBtnMobile" onclick="openUnmatched();closeNav()" style="display:none;color:var(--amber)">⚠️ Unmatched Items <span id="unmatchedBadgeMobile" style="background:var(--amber);color:#000;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:4px">0</span></button>
   <div class="nav-divider"></div>
   <button class="nav-item" onclick="openSettings();closeNav()">⚙ Settings</button>
 </div>
@@ -776,6 +778,22 @@
 </div>
 
 <!-- ═══════ HCP PENDING DEDUCTIONS MODAL ═══════ -->
+<!-- ═══════ UNMATCHED ITEMS MODAL ═══════ -->
+<div id="unmatchedModal" class="overlay hidden" onclick="overlayClick(event,'unmatchedModal')">
+  <div class="sheet sheet-wide" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">⚠️ Unmatched HCP Items</span>
+      <button class="close-x" onclick="closeModal('unmatchedModal')">✕</button>
+    </div>
+    <div style="padding:0 20px 8px">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">These items appeared on HCP jobs but couldn't be matched to your inventory. Use <strong>AI Suggest</strong> to find the best match, then approve or skip.</p>
+      <div id="unmatchedEmpty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted)">✅ All items reconciled!</div>
+      <div id="unmatchedList" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+</div>
+
 <div id="hcpPendingModal" class="overlay hidden" onclick="overlayClick(event,'hcpPendingModal')">
   <div class="sheet sheet-wide" onclick="event.stopPropagation()">
     <div class="sheet-handle"></div>
@@ -1197,7 +1215,7 @@ onAuthStateChanged(auth, async user => {
     }, { merge: true });
     adminUid = user.uid;
     hideAllScreens();
-    loadHCPPending();
+    loadHCPPending(); loadHCPUnmatched();
     return;
   }
 
@@ -1224,7 +1242,7 @@ onAuthStateChanged(auth, async user => {
       if (snap.exists() && snap.data().status === 'approved') {
         unsub();
         hideAllScreens();
-        loadHCPPending();
+        loadHCPPending(); loadHCPUnmatched();
       }
     });
     return;
@@ -1232,7 +1250,7 @@ onAuthStateChanged(auth, async user => {
 
   // Approved — show app
   hideAllScreens();
-  loadHCPPending();
+  loadHCPPending(); loadHCPUnmatched();
 });
 
 // ─── Default subcategories ────────────────────────────────────────────────────
@@ -2459,6 +2477,7 @@ window.fixHCPImportPrices = async function() {
 
 // ─── HCP Job Sync ─────────────────────────────────────────────────────────────
 let hcpPendingItems = []; // in-memory pending deductions
+let hcpUnmatchedItems = []; // in-memory unmatched items needing reconciliation
 
 // Save/load API key in Firestore settings
 window.saveHCPApiKey = async function() {
@@ -2601,6 +2620,24 @@ window.runHCPSync = async function() {
       await addDoc(collection(db,'hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
     }
 
+    // Save unmatched items to Firestore so they persist across refreshes
+    const { unmatched: unmatchedItems = [] } = result;
+    for (const item of unmatchedItems) {
+      // Avoid duplicates — check if same item+job already exists
+      const existing = await getDocs(query(
+        collection(db,'hcpUnmatched'),
+        where('jobNumber','==', String(item.jobNumber)),
+        where('itemName','==', item.itemName)
+      ));
+      if (existing.empty) {
+        await addDoc(collection(db,'hcpUnmatched'), {
+          ...item,
+          status: 'pending',
+          createdAt: serverTimestamp()
+        });
+      }
+    }
+
     // Update lastSyncAt
     await setDoc(doc(db,'settings','hcp'), {
       apiKey, lastSyncAt: result.syncedAt
@@ -2631,7 +2668,7 @@ window.runHCPSync = async function() {
 
     statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length} deductions queued${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
 
-    loadHCPPending();
+    loadHCPPending(); loadHCPUnmatched();
     if (newPending.length > 0) {
       toast(`${newPending.length} pending deductions from HCP jobs`, 'ok');
     } else {
@@ -2667,6 +2704,29 @@ function updateHCPBadge() {
   if (btn) btn.style.display = count > 0 ? '' : 'none';
   if (btnM) btnM.style.display = count > 0 ? '' : 'none';
   if (badge) badge.textContent = count;
+}
+
+async function loadHCPUnmatched() {
+  try {
+    const snap = await getDocs(collection(db,'hcpUnmatched'));
+    hcpUnmatchedItems = snap.docs
+      .map(d => ({ _id: d.id, ...d.data() }))
+      .filter(i => i.status === 'pending')
+      .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    updateUnmatchedBadge();
+  } catch(e) { console.warn('loadHCPUnmatched:', e.message); }
+}
+
+function updateUnmatchedBadge() {
+  const count = hcpUnmatchedItems.length;
+  const btn   = document.getElementById('unmatchedNavBtn');
+  const btnM  = document.getElementById('unmatchedNavBtnMobile');
+  const badge = document.getElementById('unmatchedBadge');
+  const badgeM = document.getElementById('unmatchedBadgeMobile');
+  if (btn)    btn.style.display    = count > 0 ? '' : 'none';
+  if (btnM)   btnM.style.display   = count > 0 ? '' : 'none';
+  if (badge)  badge.textContent    = count;
+  if (badgeM) badgeM.textContent   = count;
 }
 
 window.openHCPPending = function() {
@@ -2734,6 +2794,140 @@ window.approveHCPDeduction = async function(pendingId) {
     updateHCPBadge();
     renderHCPPendingList();
     toast(`Deducted ${item.quantity} × ${item.partName}`,'ok');
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
+// ─── Unmatched Items Reconciliation ──────────────────────────────────────────
+window.openUnmatched = function() {
+  renderUnmatchedList();
+  showModal('unmatchedModal');
+};
+
+function renderUnmatchedList() {
+  const listEl  = document.getElementById('unmatchedList');
+  const emptyEl = document.getElementById('unmatchedEmpty');
+  if (!hcpUnmatchedItems.length) {
+    listEl.innerHTML = ''; emptyEl.classList.remove('hidden'); return;
+  }
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = hcpUnmatchedItems.map(item => `
+    <div id="unmatchedCard_${item._id}" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+      <div style="margin-bottom:10px">
+        <div style="font-weight:700;font-size:14px;color:var(--text)">${xss(item.itemName)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+          Job #${xss(item.jobNumber)} · Qty: ${item.quantity}${item.partNumber && item.partNumber!=='—' ? ' · Part#: '+xss(item.partNumber) : ''}
+        </div>
+      </div>
+      <div id="aiResult_${item._id}" style="display:none;margin-bottom:10px;padding:10px;background:var(--surface3);border-radius:var(--radius-sm);border:1px solid var(--amber);font-size:13px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-amber btn-sm" style="flex:1" onclick="aiSuggestMatch('${item._id}')">🤖 AI Suggest</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="manualMatch('${item._id}')">🔍 Manual Match</button>
+        <button class="btn btn-ghost btn-sm" onclick="skipUnmatched('${item._id}')">Skip</button>
+      </div>
+    </div>`).join('');
+}
+
+window.aiSuggestMatch = async function(id) {
+  const item = hcpUnmatchedItems.find(i=>i._id===id); if(!item) return;
+  const resultEl = document.getElementById('aiResult_'+id);
+  resultEl.style.display = '';
+  resultEl.innerHTML = '<span style="color:var(--text-muted)">🤖 Analyzing…</span>';
+
+  try {
+    const resp = await fetch('/.netlify/functions/ai-match', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        unmatchedItem: item,
+        parts: parts.map(p => ({ id:p.id, name:p.name, partNumber:p.partNumber||'', price:p.price||0, category:p.category||'', boxName:p.boxName||'' }))
+      })
+    });
+    const result = await resp.json();
+
+    if (result.error) { resultEl.innerHTML = `<span style="color:var(--red)">Error: ${xss(result.error)}</span>`; return; }
+
+    if (!result.matchId || result.confidence < 30) {
+      resultEl.innerHTML = `<span style="color:var(--text-muted)">No confident match found (${result.confidence||0}% confidence). Try manual match.</span>`;
+      return;
+    }
+
+    const matchedPart = parts.find(p=>p.id===result.matchId);
+    if (!matchedPart) { resultEl.innerHTML = '<span style="color:var(--red)">Matched part not found in inventory.</span>'; return; }
+
+    const confColor = result.confidence >= 80 ? 'var(--green)' : result.confidence >= 50 ? 'var(--amber)' : 'var(--red)';
+    resultEl.innerHTML = `
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;color:var(--text)">🎯 ${xss(matchedPart.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${xss(result.reason)}</div>
+        <div style="font-size:11px;margin-top:4px;color:${confColor};font-weight:600">${result.confidence}% confident</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-success btn-sm" style="flex:2" onclick="approveUnmatchedMatch('${id}','${result.matchId}')">✓ Approve & Deduct</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">✕ Dismiss</button>
+      </div>`;
+  } catch(e) { resultEl.innerHTML = `<span style="color:var(--red)">Error: ${xss(e.message)}</span>`; }
+};
+
+window.manualMatch = function(id) {
+  const item = hcpUnmatchedItems.find(i=>i._id===id); if(!item) return;
+  const resultEl = document.getElementById('aiResult_'+id);
+  resultEl.style.display = '';
+  const opts = parts.map(p=>`<option value="${p.id}">${xss(p.name)}${p.partNumber?' ('+p.partNumber+')':''}${p.boxName?' — '+p.boxName:''}</option>`).join('');
+  resultEl.innerHTML = `
+    <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">Select the matching inventory part:</div>
+    <select id="manualMatchSel_${id}" class="fselect" style="width:100%;margin-bottom:8px;font-size:13px">
+      <option value="">Choose a part…</option>${opts}
+    </select>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-success btn-sm" style="flex:2" onclick="approveManualMatch('${id}')">✓ Confirm & Deduct</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">Cancel</button>
+    </div>`;
+};
+
+window.approveManualMatch = async function(id) {
+  const partId = document.getElementById('manualMatchSel_'+id)?.value;
+  if (!partId) { toast('Select a part first','err'); return; }
+  await approveUnmatchedMatch(id, partId);
+};
+
+window.approveUnmatchedMatch = async function(id, partId) {
+  const item = hcpUnmatchedItems.find(i=>i._id===id); if(!item) return;
+  const part = parts.find(p=>p.id===partId); if(!part) return;
+  try {
+    const newQty = Math.max(0, (parseInt(part.quantity)||0) - (item.quantity||1));
+    // Deduct inventory
+    await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+    // Save HCP UUID to part so future syncs auto-match
+    if (item.hcpUuid) {
+      await updateDoc(doc(db,'parts',partId), { hcpUuid: item.hcpUuid });
+    }
+    // Log transaction
+    await addDoc(collection(db,'transactions'), {
+      partId, partName: part.name, partNumber: part.partNumber||'',
+      type:'use', quantity: item.quantity||1,
+      pulledBy: item.tech||'HCP Sync', jobRef: `HCP Job #${item.jobNumber}`,
+      locationId: part.boxId||null, locationName: part.boxName||null,
+      source:'hcp_reconciled', createdAt: serverTimestamp()
+    });
+    // Mark unmatched as resolved
+    await updateDoc(doc(db,'hcpUnmatched',id), { status:'resolved', resolvedAt: serverTimestamp(), resolvedToPartId: partId });
+    hcpUnmatchedItems = hcpUnmatchedItems.filter(i=>i._id!==id);
+    updateUnmatchedBadge();
+    document.getElementById('unmatchedCard_'+id)?.remove();
+    if (!hcpUnmatchedItems.length) {
+      document.getElementById('unmatchedEmpty').classList.remove('hidden');
+    }
+    toast(`Matched & deducted ${item.quantity}× ${part.name}`,'ok');
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
+window.skipUnmatched = async function(id) {
+  try {
+    await updateDoc(doc(db,'hcpUnmatched',id), { status:'skipped', skippedAt: serverTimestamp() });
+    hcpUnmatchedItems = hcpUnmatchedItems.filter(i=>i._id!==id);
+    updateUnmatchedBadge();
+    document.getElementById('unmatchedCard_'+id)?.remove();
+    if (!hcpUnmatchedItems.length) document.getElementById('unmatchedEmpty').classList.remove('hidden');
   } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
