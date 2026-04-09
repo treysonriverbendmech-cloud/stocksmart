@@ -79,6 +79,14 @@
     <div id="migrateStatus" class="status"></div>
   </div>
 
+  <!-- Fix Admin Account -->
+  <div class="section" id="fixAdminSection" style="display:none">
+    <div class="section-title">Fix Admin Access</div>
+    <div style="font-size:13px;color:#f59e0b;margin-bottom:12px;">⚠ If you're stuck on the "Access Pending" screen as the admin, click below to force-approve your account.</div>
+    <button class="btn-primary" onclick="fixAdminStatus()">🔧 Fix My Admin Access</button>
+    <div id="fixAdminStatus" class="status"></div>
+  </div>
+
   <!-- Step 4: Cleanup (shown after migration) -->
   <div class="section" id="cleanupSection" style="display:none">
     <div class="section-title">Step 4 — Cleanup (Optional)</div>
@@ -150,6 +158,7 @@ onAuthStateChanged(auth, async user => {
       }
 
       document.getElementById('migrateSection').style.display = '';
+      document.getElementById('fixAdminSection').style.display = '';
       await checkCollections();
     } else {
       document.getElementById('companyNotFoundArea').style.display = '';
@@ -158,6 +167,21 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('companyNotFoundArea').style.display = '';
   }
 });
+
+// ── Fix Admin Status ───────────────────────────────────────────────────────────
+window.fixAdminStatus = async function() {
+  if (!currentUser || !companyId) { alert('Not signed in or no company found'); return; }
+  try {
+    const regRef = doc(db, 'companyRegistry', currentUser.uid);
+    await setDoc(regRef, { companyId, role: 'admin', status: 'approved' }, { merge: true });
+    // Also fix company-scoped user record
+    const userRef = doc(db, 'companies', companyId, 'users', currentUser.uid);
+    await setDoc(userRef, { role: 'admin', status: 'approved', email: currentUser.email }, { merge: true });
+    document.getElementById('fixAdminStatus').innerHTML = '<span style="color:#10b981">✓ Fixed! Go to getpartlocker.com/app and refresh.</span>';
+  } catch(e) {
+    document.getElementById('fixAdminStatus').innerHTML = '<span style="color:#ef4444">Error: ' + e.message + '</span>';
+  }
+};
 
 // ── Check what exists ──────────────────────────────────────────────────────────
 const TOP_LEVEL_COLS = ['parts','boxes','transactions','hcpPending','hcpUnmatched','hcpSyncedJobs','users'];
