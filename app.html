@@ -337,32 +337,75 @@
 </div>
 
 <!-- ═══════ COMPANY SCREEN ═══════ -->
-<div id="companyScreen" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
-  <div style="width:100%;max-width:400px">
-    <div style="text-align:center;margin-bottom:28px">
-      <div style="font-size:44px;margin-bottom:8px">🏢</div>
-      <div style="font-size:20px;font-weight:800;color:var(--text)">Set Up Your Company</div>
-      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Create a new company or join an existing one</div>
+<div id="companyScreen" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow-y:auto">
+  <div style="width:100%;max-width:420px;padding:8px 0 32px">
+
+    <!-- Branding -->
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:16px;font-size:28px;margin-bottom:14px;box-shadow:0 8px 24px rgba(99,102,241,0.35)">🔧</div>
+      <div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-0.5px">Partlocker</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">HVAC Inventory Management</div>
     </div>
-    <!-- Tabs -->
-    <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:20px">
-      <button id="coCreateTab" onclick="switchCompanyTab('create')" style="flex:1;padding:11px 10px;font-size:14px;font-weight:600;background:var(--purple);color:#fff;border:none;cursor:pointer">Create Company</button>
-      <button id="coJoinTab"   onclick="switchCompanyTab('join')"   style="flex:1;padding:11px 10px;font-size:14px;font-weight:600;background:transparent;color:var(--text-muted);border:none;cursor:pointer">Join Company</button>
+
+    <!-- Card -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.25)">
+
+      <!-- Tab bar -->
+      <div style="display:flex;border-bottom:1px solid var(--border)">
+        <button id="coCreateTab" onclick="switchCompanyTab('create')"
+          style="flex:1;padding:14px 10px;font-size:14px;font-weight:700;background:transparent;color:var(--purple);border:none;cursor:pointer;border-bottom:2px solid var(--purple);transition:all 0.15s">
+          New Company
+        </button>
+        <button id="coJoinTab" onclick="switchCompanyTab('join')"
+          style="flex:1;padding:14px 10px;font-size:14px;font-weight:700;background:transparent;color:var(--text-muted);border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s">
+          Join a Team
+        </button>
+      </div>
+
+      <!-- Create panel -->
+      <div id="coCreatePanel" style="padding:24px">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">Set up your company</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px;line-height:1.5">You'll be the admin. Invite your techs once you're in.</div>
+
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Company Name</label>
+        <input id="coNameInput" class="finput" placeholder="e.g. Riverbend Mechanical" style="margin-bottom:20px">
+
+        <!-- Feature highlights -->
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:20px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">What you get</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)"><span style="font-size:16px">📦</span> Real-time inventory across all vans</div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)"><span style="font-size:16px">🔁</span> HCP job sync &amp; AI part matching</div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)"><span style="font-size:16px">👥</span> Multi-tech with role-based access</div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;padding:13px;font-size:15px" onclick="createCompany()">Create Company →</button>
+      </div>
+
+      <!-- Join panel -->
+      <div id="coJoinPanel" style="display:none;padding:24px">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">Join your team</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.5">Get your invite code from your company admin and enter it below.</div>
+
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:8px">Invite Code</label>
+        <input id="coCodeInput" class="finput" placeholder="AB1234" maxlength="8"
+          style="margin-bottom:20px;text-align:center;font-size:28px;font-weight:800;letter-spacing:8px;text-transform:uppercase;padding:16px">
+
+        <button class="btn btn-primary" style="width:100%;padding:13px;font-size:15px" onclick="joinCompany()">Join Team →</button>
+
+        <div style="margin-top:16px;font-size:12px;color:var(--text-muted);text-align:center;line-height:1.6">
+          Your admin will approve your request before you get access.
+        </div>
+      </div>
+
     </div>
-    <!-- Create -->
-    <div id="coCreatePanel">
-      <input id="coNameInput" class="finput" placeholder="Company name (e.g. Riverbend Mechanical)" style="margin-bottom:12px">
-      <button class="btn btn-primary" style="width:100%" onclick="createCompany()">Create &amp; Get Started</button>
+
+    <div id="coError" style="margin-top:14px;text-align:center;font-size:13px;color:var(--red);display:none"></div>
+    <div style="margin-top:16px;text-align:center">
+      <button class="btn btn-ghost btn-sm" onclick="handleSignOut()" style="font-size:12px;color:var(--text-muted)">← Sign out</button>
     </div>
-    <!-- Join -->
-    <div id="coJoinPanel" style="display:none">
-      <input id="coCodeInput" class="finput" placeholder="6-digit invite code" maxlength="8" style="margin-bottom:12px;text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase">
-      <button class="btn btn-primary" style="width:100%" onclick="joinCompany()">Join Company</button>
-    </div>
-    <div id="coError" style="margin-top:12px;text-align:center;font-size:13px;color:var(--red);display:none"></div>
-    <div style="margin-top:20px;text-align:center">
-      <button class="btn btn-ghost btn-sm" onclick="handleSignOut()">← Sign out</button>
-    </div>
+
   </div>
 </div>
 
@@ -1064,12 +1107,14 @@ function showCompanyScreen(show) {
 
 window.switchCompanyTab = function(tab) {
   const isCreate = tab === 'create';
-  document.getElementById('coCreateTab').style.background = isCreate ? 'var(--purple)' : 'transparent';
-  document.getElementById('coCreateTab').style.color = isCreate ? '#fff' : 'var(--text-muted)';
-  document.getElementById('coJoinTab').style.background = isCreate ? 'transparent' : 'var(--purple)';
-  document.getElementById('coJoinTab').style.color = isCreate ? 'var(--text-muted)' : '#fff';
+  const createBtn = document.getElementById('coCreateTab');
+  const joinBtn   = document.getElementById('coJoinTab');
+  createBtn.style.color       = isCreate ? 'var(--purple)' : 'var(--text-muted)';
+  createBtn.style.borderBottom = isCreate ? '2px solid var(--purple)' : '2px solid transparent';
+  joinBtn.style.color         = isCreate ? 'var(--text-muted)' : 'var(--purple)';
+  joinBtn.style.borderBottom  = isCreate ? '2px solid transparent' : '2px solid var(--purple)';
   document.getElementById('coCreatePanel').style.display = isCreate ? '' : 'none';
-  document.getElementById('coJoinPanel').style.display = isCreate ? 'none' : '';
+  document.getElementById('coJoinPanel').style.display   = isCreate ? 'none' : '';
   document.getElementById('coError').style.display = 'none';
 };
 
