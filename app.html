@@ -1539,11 +1539,16 @@ const CAT_CLASS = { HVAC:'cat-hvac', Plumbing:'cat-plumbing', Electrical:'cat-el
 
 // ─── Load settings ────────────────────────────────────────────────────────────
 async function loadSettings() {
+  // Reset to defaults first so previous company's data never bleeds through
+  settings.companyName  = '';
+  settings.appSubtitle  = '';
+  settings.logoUrl      = '';
+  settings.techs        = [];
+  settings.subcategories = JSON.parse(JSON.stringify(DEFAULT_SUBS));
   try {
-    const snap = await getDoc(doc(db, 'settings', 'app'));
+    const snap = await getDoc(coDoc('settings', 'app'));
     if (snap.exists()) {
       const d = snap.data();
-      // Merge subcategories with defaults so new categories are always present
       if (d.subcategories) {
         Object.keys(DEFAULT_SUBS).forEach(cat => {
           settings.subcategories[cat] = d.subcategories[cat] || DEFAULT_SUBS[cat];
@@ -1555,15 +1560,15 @@ async function loadSettings() {
       if (d.techs)        settings.techs        = d.techs;
     }
   } catch(e) { console.warn('Settings load failed, using defaults'); }
+  applyBranding();
 }
-await loadSettings();
-applyBranding();
 
 // ─── Firestore listeners — started only after user is authenticated & approved ──
 let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null, _unsubHcpPending = null, _unsubHcpUnmatched = null;
 
 function startListeners() {
   stopListeners(); // always tear down first in case company changed
+  loadSettings();  // reload settings for the current company
   _unsubParts = onSnapshot(query(co('parts'), orderBy('createdAt','desc')), snap => {
     parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateStats(); updateBoxFilter(); applyFilters();
