@@ -2134,14 +2134,14 @@ function applyBranding() {
   document.title = name;
   const mark = document.getElementById('logoMark');
   if (logo) {
-    mark.style.background = 'transparent';
-    mark.style.boxShadow  = 'none';
-    mark.style.borderRadius = '0';
-    mark.style.padding    = '0';
-    mark.style.minWidth   = '40px';
-    mark.style.maxWidth   = '120px';
-    mark.style.height     = '40px';
-    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain">`;
+    mark.style.background   = 'transparent';
+    mark.style.boxShadow    = 'none';
+    mark.style.borderRadius = '9px';
+    mark.style.padding      = '0';
+    mark.style.minWidth     = '40px';
+    mark.style.maxWidth     = '120px';
+    mark.style.height       = '40px';
+    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain;border-radius:9px">`;
   } else {
     mark.style.background   = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
     mark.style.boxShadow    = '0 0 0 1px rgba(99,102,241,0.4)';
