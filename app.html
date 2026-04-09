@@ -336,6 +336,55 @@
   <button class="btn btn-ghost" onclick="handleSignOut()">Sign out</button>
 </div>
 
+<!-- ═══════ ONBOARDING MODAL ═══════ -->
+<div id="onboardingModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.4)">
+    <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:24px;text-align:center">
+      <div style="font-size:40px;margin-bottom:8px">🎉</div>
+      <div style="font-size:20px;font-weight:900;color:#fff">You're all set!</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px">Here's how to get started with Partlocker</div>
+    </div>
+    <div style="padding:20px">
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--purple);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Add your vans</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Go to Settings → Boxes to create van locations for your team</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--purple);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Invite your team</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Share your invite code — your techs join at getpartlocker.com/app</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--purple);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Add your inventory</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Tap the + button to start adding parts to your vans</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--purple);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Connect HCP <span style="font-weight:500;color:var(--text-muted)">(optional)</span></div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Go to Settings → Integrations to sync Housecall Pro jobs</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:16px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Your team invite code</div>
+        <div id="onboardingInviteCode" style="font-size:24px;font-weight:900;color:var(--purple);letter-spacing:4px">——</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Find this anytime in Settings</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('onboardingModal').style.display='none'">Let's Go →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════ COMPANY SCREEN ═══════ -->
 <div id="companyScreen" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow-y:auto">
   <div style="width:100%;max-width:420px;padding:8px 0 32px">
@@ -1158,7 +1207,7 @@ window.createCompany = async function() {
     adminUid = currentUser.uid;
     showCompanyScreen(false);
     hideAllScreens();
-    toast(`Welcome to Partlocker! Your invite code is: ${inviteCode}`, 'ok');
+    showOnboardingModal(inviteCode);
   } catch(e) { showCoError('Error: ' + e.message); }
 };
 
@@ -1198,6 +1247,11 @@ window.joinCompany = async function() {
 
 function hideSplash() {
   document.getElementById('splashScreen').style.display = 'none';
+}
+
+function showOnboardingModal(inviteCode) {
+  document.getElementById('onboardingInviteCode').textContent = inviteCode || '——';
+  document.getElementById('onboardingModal').style.display = 'flex';
 }
 
 function showPendingScreen(user) {
@@ -1384,6 +1438,13 @@ getRedirectResult(auth).then(result => {
 // Auth state — splash → company check → app or pending
 onAuthStateChanged(auth, async user => {
   currentUser = user;
+
+  // Reset branding to defaults whenever auth state changes (prevents previous user's branding bleeding through)
+  settings.companyName = '';
+  settings.appSubtitle = '';
+  settings.logoUrl     = '';
+  applyBranding();
+
   if (!user) {
     hideSplash();
     showLoginScreen(true);
