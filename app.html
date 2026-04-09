@@ -1439,6 +1439,11 @@ getRedirectResult(auth).then(result => {
 onAuthStateChanged(auth, async user => {
   currentUser = user;
 
+  // Tear down any existing listeners and reset state for the new user
+  stopListeners();
+  companyId = null;
+  parts = []; boxes = []; transactions = []; hcpPendingItems = []; hcpUnmatchedItems = [];
+
   // Reset branding to defaults whenever auth state changes (prevents previous user's branding bleeding through)
   settings.companyName = '';
   settings.appSubtitle = '';
