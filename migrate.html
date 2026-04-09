@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Partlocker — Data Migration</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0b0f; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #111318; border: 1px solid #252a38; border-radius: 16px; padding: 32px; width: 100%; max-width: 520px; }
+    h1 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+    .sub { font-size: 13px; color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
+    .section { background: #191c25; border: 1px solid #252a38; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 10px; }
+    input { width: 100%; background: #0a0b0f; border: 1px solid #252a38; color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 14px; margin-bottom: 10px; }
+    input:focus { outline: none; border-color: #6366f1; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; width: 100%; margin-bottom: 8px; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #818cf8; }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-ghost { background: #191c25; color: #94a3b8; border: 1px solid #252a38; }
+    .btn-danger { background: rgba(239,68,68,.12); color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
+    .log { background: #0a0b0f; border: 1px solid #252a38; border-radius: 8px; padding: 14px; font-size: 12px; font-family: monospace; max-height: 320px; overflow-y: auto; display: none; margin-top: 12px; }
+    .log-line { margin-bottom: 3px; line-height: 1.5; }
+    .ok  { color: #10b981; }
+    .err { color: #ef4444; }
+    .dim { color: #4b5568; }
+    .warn { color: #f59e0b; }
+    .status { text-align: center; font-size: 13px; color: #94a3b8; margin-top: 10px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; }
+    .badge-green { background: rgba(16,185,129,.15); color: #10b981; }
+    .badge-amber { background: rgba(245,158,11,.15); color: #f59e0b; }
+    #companyIdDisplay { font-size: 15px; font-weight: 700; color: #6366f1; font-family: monospace; }
+    .divider { height: 1px; background: #252a38; margin: 16px 0; }
+    .warning-box { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #f59e0b; margin-bottom: 16px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div style="font-size:36px;margin-bottom:12px;text-align:center">🔄</div>
+  <h1 style="text-align:center">Partlocker Data Migration</h1>
+  <p class="sub" style="text-align:center">Run this once to move your existing inventory data into your new company namespace. Safe to run — original data is preserved until you delete it.</p>
+
+  <!-- Step 1: Auth -->
+  <div class="section" id="authSection">
+    <div class="section-title">Step 1 — Sign In</div>
+    <button class="btn-primary" id="googleBtn" onclick="signInGoogle()">
+      <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
+      Sign in with Google
+    </button>
+    <div id="authStatus" class="status">Not signed in</div>
+  </div>
+
+  <!-- Step 2: Company -->
+  <div class="section" id="companySection" style="display:none">
+    <div class="section-title">Step 2 — Your Company</div>
+    <div id="companyFoundArea" style="display:none">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:6px">Company found in registry:</div>
+      <div id="companyIdDisplay">—</div>
+      <div id="companyNameDisplay" style="font-size:13px;color:#94a3b8;margin-top:4px">—</div>
+    </div>
+    <div id="companyNotFoundArea" style="display:none">
+      <div class="warning-box">⚠ No company found for your account. You need to first open the app at <strong>getpartlocker.com/app</strong>, sign in, and create your company. Then come back here.</div>
+      <a href="/app" style="display:block;text-align:center;color:#6366f1;font-size:13px">Go to app →</a>
+    </div>
+  </div>
+
+  <!-- Step 3: Migrate -->
+  <div class="section" id="migrateSection" style="display:none">
+    <div class="section-title">Step 3 — Migrate Data</div>
+    <div class="warning-box">⚠ Make sure you've already created your company in the app before running this. Your existing data will be copied into your company namespace. Nothing is deleted automatically.</div>
+
+    <div id="collectionCheckArea" style="margin-bottom:14px;font-size:13px;color:#94a3b8">Checking for data to migrate…</div>
+
+    <button class="btn-primary" id="migrateBtn" onclick="runMigration()" disabled>
+      🚀 Run Migration
+    </button>
+    <div class="log" id="migLog"></div>
+    <div id="migrateStatus" class="status"></div>
+  </div>
+
+  <!-- Step 4: Cleanup (shown after migration) -->
+  <div class="section" id="cleanupSection" style="display:none">
+    <div class="section-title">Step 4 — Cleanup (Optional)</div>
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Once you've confirmed everything is working in the app, you can delete the old top-level data. <strong style="color:#f59e0b">Only do this after verifying your inventory looks correct in the app.</strong></div>
+    <button class="btn-danger" id="cleanupBtn" onclick="confirmCleanup()">🗑 Delete Old Top-Level Data</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp }    from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+         collection, doc, getDocs, getDoc, setDoc, deleteDoc, writeBatch, query, orderBy }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+// ── Init Firebase ──────────────────────────────────────────────────────────────
+const cfgRes = await fetch('/.netlify/functions/config');
+const firebaseConfig = await cfgRes.json();
+const app  = initializeApp(firebaseConfig);
+const db   = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+
+let currentUser = null;
+let companyId   = null;
+
+// ── Log helpers ────────────────────────────────────────────────────────────────
+const logEl = document.getElementById('migLog');
+function log(msg, cls='') {
+  logEl.style.display = '';
+  const d = document.createElement('div');
+  d.className = 'log-line ' + cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+window.signInGoogle = async function() {
+  try { await signInWithPopup(auth, googleProvider); }
+  catch(e) { document.getElementById('authStatus').textContent = 'Error: ' + e.message; }
+};
+
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+  if (!user) {
+    document.getElementById('authStatus').textContent = 'Not signed in';
+    document.getElementById('companySection').style.display = 'none';
+    document.getElementById('migrateSection').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('authStatus').innerHTML = `<span class="badge badge-green">✓ Signed in as ${user.email}</span>`;
+  document.getElementById('companySection').style.display = '';
+
+  // Look up company registry
+  try {
+    const regSnap = await getDoc(doc(db, 'companyRegistry', user.uid));
+    if (regSnap.exists()) {
+      companyId = regSnap.data().companyId;
+      document.getElementById('companyFoundArea').style.display = '';
+      document.getElementById('companyIdDisplay').textContent = companyId;
+
+      // Load company name
+      const coSnap = await getDoc(doc(db, 'companies', companyId));
+      if (coSnap.exists()) {
+        document.getElementById('companyNameDisplay').textContent = '📍 ' + (coSnap.data().name || companyId);
+      }
+
+      document.getElementById('migrateSection').style.display = '';
+      await checkCollections();
+    } else {
+      document.getElementById('companyNotFoundArea').style.display = '';
+    }
+  } catch(e) {
+    document.getElementById('companyNotFoundArea').style.display = '';
+  }
+});
+
+// ── Check what exists ──────────────────────────────────────────────────────────
+const TOP_LEVEL_COLS = ['parts','boxes','transactions','hcpPending','hcpUnmatched','hcpSyncedJobs','users'];
+const SETTINGS_DOCS  = ['hcp','admin','branding'];
+
+async function checkCollections() {
+  const area = document.getElementById('collectionCheckArea');
+  area.innerHTML = '';
+  let total = 0;
+
+  for (const name of TOP_LEVEL_COLS) {
+    try {
+      const snap = await getDocs(collection(db, name));
+      const count = snap.size;
+      total += count;
+      const line = document.createElement('div');
+      line.style.cssText = 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #252a38;font-size:12px';
+      line.innerHTML = `<span>${name}</span><span style="color:${count>0?'#10b981':'#4b5568'}">${count} docs</span>`;
+      area.appendChild(line);
+    } catch(e) {
+      const line = document.createElement('div');
+      line.style.cssText = 'font-size:12px;color:#4b5568;padding:3px 0';
+      line.textContent = `${name}: (error reading)`;
+      area.appendChild(line);
+    }
+  }
+
+  // Settings docs
+  for (const docName of SETTINGS_DOCS) {
+    try {
+      const snap = await getDoc(doc(db,'settings',docName));
+      const exists = snap.exists();
+      if (exists) total++;
+      const line = document.createElement('div');
+      line.style.cssText = 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #252a38;font-size:12px';
+      line.innerHTML = `<span>settings/${docName}</span><span style="color:${exists?'#10b981':'#4b5568'}">${exists?'exists':'empty'}</span>`;
+      area.appendChild(line);
+    } catch { }
+  }
+
+  const summary = document.createElement('div');
+  summary.style.cssText = 'font-size:13px;color:#94a3b8;margin-top:10px;font-weight:600';
+  summary.textContent = total > 0 ? `${total} total documents ready to migrate.` : 'No top-level data found — may already be migrated.';
+  area.appendChild(summary);
+
+  document.getElementById('migrateBtn').disabled = total === 0;
+  if (total === 0) {
+    document.getElementById('migrateBtn').textContent = '✓ Nothing to migrate';
+  }
+}
+
+// ── Migration ──────────────────────────────────────────────────────────────────
+window.runMigration = async function() {
+  if (!companyId) { alert('No company ID found'); return; }
+  document.getElementById('migrateBtn').disabled = true;
+  document.getElementById('migrateBtn').textContent = 'Migrating…';
+  document.getElementById('migrateStatus').textContent = '';
+
+  let moved = 0, skipped = 0, errors = 0;
+
+  // Migrate top-level collections
+  for (const colName of TOP_LEVEL_COLS) {
+    log(`\n── ${colName} ──`, 'dim');
+    try {
+      const snap = await getDocs(collection(db, colName));
+      if (snap.empty) { log(`  (empty)`, 'dim'); continue; }
+
+      // Process in batches of 400
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 400) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + 400);
+        for (const d of chunk) {
+          const destRef = doc(db, 'companies', companyId, colName, d.id);
+          batch.set(destRef, d.data(), { merge: true });
+          moved++;
+        }
+        await batch.commit();
+        log(`  ✓ ${Math.min(i + 400, docs.length)} / ${docs.length} docs`, 'ok');
+      }
+    } catch(e) {
+      log(`  ✗ Error: ${e.message}`, 'err');
+      errors++;
+    }
+  }
+
+  // Migrate settings docs
+  log(`\n── settings ──`, 'dim');
+  for (const docName of SETTINGS_DOCS) {
+    try {
+      const snap = await getDoc(doc(db,'settings',docName));
+      if (!snap.exists()) { log(`  settings/${docName}: (empty)`, 'dim'); continue; }
+      const destRef = doc(db, 'companies', companyId, 'settings', docName);
+      await setDoc(destRef, snap.data(), { merge: true });
+      log(`  ✓ settings/${docName}`, 'ok');
+      moved++;
+    } catch(e) {
+      log(`  ✗ settings/${docName}: ${e.message}`, 'err');
+      errors++;
+    }
+  }
+
+  log(`\n────────────────────`, 'dim');
+  log(`Migration complete: ${moved} docs copied, ${errors} errors`, errors > 0 ? 'warn' : 'ok');
+
+  document.getElementById('migrateBtn').textContent = errors > 0 ? '⚠ Done with errors — check log' : '✓ Migration complete!';
+  document.getElementById('migrateStatus').textContent = errors > 0 ? 'Some errors occurred — check the log above' : `All done! Open the app to verify your inventory.`;
+
+  if (errors === 0 && moved > 0) {
+    document.getElementById('cleanupSection').style.display = '';
+  }
+};
+
+// ── Cleanup ────────────────────────────────────────────────────────────────────
+window.confirmCleanup = async function() {
+  const confirmed = confirm(
+    '⚠ This will permanently delete ALL data from the old top-level collections.\n\n' +
+    'Only proceed if you have verified your inventory looks correct in the app.\n\n' +
+    'Type your company ID to confirm: ' + companyId
+  );
+  if (!confirmed) return;
+
+  const entered = prompt(`Type your company ID exactly to confirm deletion:\n\n${companyId}`);
+  if (entered !== companyId) { alert('Company ID did not match. Cleanup cancelled.'); return; }
+
+  document.getElementById('cleanupBtn').disabled = true;
+  document.getElementById('cleanupBtn').textContent = 'Deleting…';
+  log('\n── Deleting old top-level data ──', 'warn');
+
+  for (const colName of TOP_LEVEL_COLS) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      log(`  ✓ Deleted ${snap.size} docs from ${colName}`, 'ok');
+    } catch(e) { log(`  ✗ ${colName}: ${e.message}`, 'err'); }
+  }
+
+  // Delete settings docs
+  for (const docName of SETTINGS_DOCS) {
+    try {
+      await deleteDoc(doc(db,'settings',docName));
+      log(`  ✓ Deleted settings/${docName}`, 'ok');
+    } catch(e) { log(`  ✗ settings/${docName}: ${e.message}`, 'err'); }
+  }
+
+  log('\n✓ Cleanup complete', 'ok');
+  document.getElementById('cleanupBtn').textContent = '✓ Done';
+};
+</script>
+</body>
+</html>
