@@ -336,6 +336,36 @@
   <button class="btn btn-ghost" onclick="handleSignOut()">Sign out</button>
 </div>
 
+<!-- ═══════ COMPANY SCREEN ═══════ -->
+<div id="companyScreen" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
+  <div style="width:100%;max-width:400px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:44px;margin-bottom:8px">🏢</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text)">Set Up Your Company</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Create a new company or join an existing one</div>
+    </div>
+    <!-- Tabs -->
+    <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:20px">
+      <button id="coCreateTab" onclick="switchCompanyTab('create')" style="flex:1;padding:11px 10px;font-size:14px;font-weight:600;background:var(--purple);color:#fff;border:none;cursor:pointer">Create Company</button>
+      <button id="coJoinTab"   onclick="switchCompanyTab('join')"   style="flex:1;padding:11px 10px;font-size:14px;font-weight:600;background:transparent;color:var(--text-muted);border:none;cursor:pointer">Join Company</button>
+    </div>
+    <!-- Create -->
+    <div id="coCreatePanel">
+      <input id="coNameInput" class="finput" placeholder="Company name (e.g. Riverbend Mechanical)" style="margin-bottom:12px">
+      <button class="btn btn-primary" style="width:100%" onclick="createCompany()">Create &amp; Get Started</button>
+    </div>
+    <!-- Join -->
+    <div id="coJoinPanel" style="display:none">
+      <input id="coCodeInput" class="finput" placeholder="6-digit invite code" maxlength="8" style="margin-bottom:12px;text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase">
+      <button class="btn btn-primary" style="width:100%" onclick="joinCompany()">Join Company</button>
+    </div>
+    <div id="coError" style="margin-top:12px;text-align:center;font-size:13px;color:var(--red);display:none"></div>
+    <div style="margin-top:20px;text-align:center">
+      <button class="btn btn-ghost btn-sm" onclick="handleSignOut()">← Sign out</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════ LOGIN SCREEN ═══════ -->
 <div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
   <div style="width:100%;max-width:400px">
@@ -662,6 +692,16 @@
       <div class="add-box-row" style="margin-top:16px">
         <input class="finput" id="newTechName" placeholder="Tech name (e.g. Mike Johnson)" style="flex:1">
         <button class="btn btn-primary" onclick="addTech()">Add</button>
+      </div>
+      <!-- Company / Invite Code -->
+      <div id="inviteSection" style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px">🏢 Company</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Share this invite code with your team so they can join your company.</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div id="inviteCodeDisplay" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:20px;font-weight:800;letter-spacing:4px;text-align:center;color:var(--accent-hover)">——————</div>
+          <button class="btn btn-ghost btn-sm" onclick="copyInviteCode()">📋 Copy</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;font-size:12px;opacity:0.7" onclick="regenerateInviteCode()">↩ Generate new code</button>
       </div>
     </div>
     <!-- Branding tab -->
@@ -1006,11 +1046,110 @@ const googleProvider = new GoogleAuthProvider();
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentUserData = null; // Firestore user record — has .role and .locationId
+let companyId = null;
+
+// Scope all app data under /companies/{companyId}/
+// Use these instead of co('parts') etc.
+const co    = name       => collection(db, 'companies', companyId, name);
+const coDoc = (...args)  => doc(db, 'companies', companyId, ...args);
 
 function showLoginScreen(show) {
   document.getElementById('loginScreen').style.display = show ? 'flex' : 'none';
   document.getElementById('signOutBtn').style.display  = show ? 'none' : '';
 }
+
+function showCompanyScreen(show) {
+  document.getElementById('companyScreen').style.display = show ? 'flex' : 'none';
+}
+
+window.switchCompanyTab = function(tab) {
+  const isCreate = tab === 'create';
+  document.getElementById('coCreateTab').style.background = isCreate ? 'var(--purple)' : 'transparent';
+  document.getElementById('coCreateTab').style.color = isCreate ? '#fff' : 'var(--text-muted)';
+  document.getElementById('coJoinTab').style.background = isCreate ? 'transparent' : 'var(--purple)';
+  document.getElementById('coJoinTab').style.color = isCreate ? 'var(--text-muted)' : '#fff';
+  document.getElementById('coCreatePanel').style.display = isCreate ? '' : 'none';
+  document.getElementById('coJoinPanel').style.display = isCreate ? 'none' : '';
+  document.getElementById('coError').style.display = 'none';
+};
+
+function showCoError(msg) {
+  const el = document.getElementById('coError');
+  el.textContent = msg; el.style.display = '';
+}
+
+function generateId(len=6) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:len}, ()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+function slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').substring(0,30) + '-' + generateId(4).toLowerCase();
+}
+
+window.createCompany = async function() {
+  const name = document.getElementById('coNameInput').value.trim();
+  if (!name) { showCoError('Enter your company name'); return; }
+  try {
+    const cId = slugify(name);
+    const inviteCode = generateId(6);
+    // Create company doc
+    await setDoc(doc(db, 'companies', cId), {
+      name, inviteCode, plan: 'free',
+      ownerId: currentUser.uid, createdAt: serverTimestamp()
+    });
+    // Create company-scoped user record
+    companyId = cId;
+    await setDoc(coDoc('users', currentUser.uid), {
+      email: currentUser.email,
+      displayName: currentUser.displayName || currentUser.email,
+      role: 'admin', status: 'approved', createdAt: serverTimestamp()
+    });
+    // Register in company registry
+    await setDoc(doc(db, 'companyRegistry', currentUser.uid), {
+      companyId: cId, role: 'admin', status: 'approved'
+    });
+    currentUserData = { role: 'admin', status: 'approved', locationId: null };
+    adminUid = currentUser.uid;
+    showCompanyScreen(false);
+    hideAllScreens();
+    toast(`Welcome to Partlocker! Your invite code is: ${inviteCode}`, 'ok');
+  } catch(e) { showCoError('Error: ' + e.message); }
+};
+
+window.joinCompany = async function() {
+  const code = document.getElementById('coCodeInput').value.trim().toUpperCase();
+  if (code.length < 4) { showCoError('Enter the invite code from your admin'); return; }
+  try {
+    // Find company by invite code
+    const snap = await getDocs(query(collection(db,'companies'), where('inviteCode','==',code)));
+    if (snap.empty) { showCoError('Invalid invite code — check with your admin'); return; }
+    const companyDoc = snap.docs[0];
+    const cId = companyDoc.id;
+    companyId = cId;
+    // Create pending user record in the company
+    await setDoc(coDoc('users', currentUser.uid), {
+      email: currentUser.email,
+      displayName: currentUser.displayName || currentUser.email,
+      role: 'tech', status: 'pending', createdAt: serverTimestamp()
+    });
+    // Register in company registry as pending
+    await setDoc(doc(db, 'companyRegistry', currentUser.uid), {
+      companyId: cId, role: 'tech', status: 'pending'
+    });
+    showCompanyScreen(false);
+    showPendingScreen(currentUser);
+    // Watch for approval
+    const regRef = doc(db, 'companyRegistry', currentUser.uid);
+    const unsub = onSnapshot(regRef, snapR => {
+      if (snapR.exists() && snapR.data().status === 'approved') {
+        unsub();
+        currentUserData = { role: 'tech', status: 'approved', locationId: null };
+        hideAllScreens();
+      }
+    });
+  } catch(e) { showCoError('Error: ' + e.message); }
+};
 
 function hideSplash() {
   document.getElementById('splashScreen').style.display = 'none';
@@ -1024,6 +1163,7 @@ function showPendingScreen(user) {
 }
 
 function hideAllScreens() {
+  document.getElementById('companyScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display  = 'none';
   document.getElementById('pendingScreen').style.display = 'none';
   document.getElementById('splashScreen').style.display  = 'none';
@@ -1104,6 +1244,7 @@ window.handleSignOut = async function() {
   if (!confirm('Sign out of Part Locker?')) return;
   stopListeners();
   await signOut(auth);
+  showCompanyScreen(false);
   showLoginScreen(true);
 };
 
@@ -1114,7 +1255,7 @@ async function loadTeamUsers() {
   if (!isAdmin) return;
 
   try {
-    const snap = await getDocs(collection(db, 'users'));
+    const snap = await getDocs(co('users'));
     const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     // Pending
@@ -1158,26 +1299,28 @@ async function loadTeamUsers() {
 }
 
 window.approveUser = async function(uid) {
-  await updateDoc(doc(db,'users',uid), { status:'approved' });
+  await updateDoc(coDoc('users',uid), { status:'approved' });
+  await updateDoc(doc(db,'companyRegistry',uid), { status:'approved' });
   toast('User approved!','ok');
   loadTeamUsers();
 };
 
 window.denyUser = async function(uid) {
   if (!confirm('Deny and remove this user?')) return;
-  await updateDoc(doc(db,'users',uid), { status:'denied' });
+  await updateDoc(coDoc('users',uid), { status:'denied' });
   loadTeamUsers();
 };
 
 window.removeUser = async function(uid) {
   if (!confirm('Remove this user\'s access?')) return;
-  await updateDoc(doc(db,'users',uid), { status:'denied' });
+  await updateDoc(coDoc('users',uid), { status:'denied' });
+  await deleteDoc(doc(db,'companyRegistry',uid));
   toast('User removed','ok');
   loadTeamUsers();
 };
 
 window.saveUserLocation = async function(uid, locationId) {
-  await updateDoc(doc(db,'users',uid), { locationId });
+  await updateDoc(coDoc('users',uid), { locationId });
   toast('Location mapped','ok');
 };
 
@@ -1198,7 +1341,7 @@ getRedirectResult(auth).then(result => {
   }
 });
 
-// Auth state — splash → check approval → app or pending
+// Auth state — splash → company check → app or pending
 onAuthStateChanged(auth, async user => {
   currentUser = user;
   if (!user) {
@@ -1207,61 +1350,56 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  // Check/create user record in Firestore
-  const userRef = doc(db, 'users', user.uid);
-  const userSnap = await getDoc(userRef);
+  // Look up this user in the company registry
+  const regRef  = doc(db, 'companyRegistry', user.uid);
+  const regSnap = await getDoc(regRef);
 
-  // Check if there's an admin set yet
-  const adminSnap = await getDoc(doc(db, 'settings', 'admin'));
-  const firstUser = !adminSnap.exists();
-
-  if (firstUser) {
-    // First person to log in becomes admin, auto-approved
-    await setDoc(doc(db, 'settings', 'admin'), { uid: user.uid, email: user.email });
-    const adminData = { email: user.email, displayName: user.displayName || user.email, role: 'admin', status: 'approved', createdAt: serverTimestamp() };
-    await setDoc(userRef, adminData, { merge: true });
-    currentUserData = adminData;
-    adminUid = user.uid;
-    hideAllScreens();
-    // badges auto-update via onSnapshot started in hideAllScreens → startListeners
+  if (!regSnap.exists()) {
+    // No company yet — show company create/join screen
+    hideSplash();
+    showCompanyScreen(true);
     return;
   }
 
-  adminUid = adminSnap.data().uid;
+  const regData = regSnap.data();
+  companyId = regData.companyId;
 
-  if (!userSnap.exists()) {
-    // New user — create pending record
-    await setDoc(userRef, {
-      email: user.email,
-      displayName: user.displayName || user.email,
-      role: 'tech',
-      status: 'pending',
-      createdAt: serverTimestamp()
-    });
+  if (regData.status === 'pending') {
+    // Waiting for admin approval — show pending screen
     showPendingScreen(user);
-    return;
-  }
-
-  const userData = userSnap.data();
-  if (userData.status !== 'approved') {
-    showPendingScreen(user);
-    // Watch for approval in real-time — let them in the moment admin approves
-    const unsub = onSnapshot(userRef, snap => {
+    // Watch for approval
+    const unsub = onSnapshot(regRef, snap => {
       if (snap.exists() && snap.data().status === 'approved') {
         unsub();
-        currentUserData = snap.data();
+        const rd = snap.data();
+        currentUserData = { role: rd.role, status: 'approved', locationId: rd.locationId || null, displayName: user.displayName || user.email, email: user.email };
         hideAllScreens();
-        // badges auto-update via onSnapshot started in hideAllScreens → startListeners
       }
     });
     return;
   }
 
-  // Approved — show app
-  currentUserData = userData;
+  // Approved — load company-scoped user record for role/location
+  const userRef  = coDoc('users', user.uid);
+  const userSnap = await getDoc(userRef);
+  if (userSnap.exists()) {
+    currentUserData = userSnap.data();
+  } else {
+    currentUserData = { role: regData.role || 'tech', status: 'approved', locationId: null };
+  }
+
+  // Determine admin — anyone with role='admin' in this company
+  adminUid = regData.role === 'admin' ? user.uid : (await getAdminUid());
+
   hideAllScreens();
-  // badges auto-update via onSnapshot started in hideAllScreens → startListeners
 });
+
+async function getAdminUid() {
+  try {
+    const snap = await getDocs(query(co('users'), where('role','==','admin')));
+    return snap.empty ? null : snap.docs[0].id;
+  } catch { return null; }
+}
 
 // ─── Default subcategories ────────────────────────────────────────────────────
 const DEFAULT_SUBS = {
@@ -1324,22 +1462,22 @@ let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null, _unsubHcpPending 
 
 function startListeners() {
   if (_unsubParts) return; // already running
-  _unsubParts = onSnapshot(query(collection(db,'parts'), orderBy('createdAt','desc')), snap => {
+  _unsubParts = onSnapshot(query(co('parts'), orderBy('createdAt','desc')), snap => {
     parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateStats(); updateBoxFilter(); applyFilters();
   }, err => { console.error('Firestore parts:', err); });
 
-  _unsubBoxes = onSnapshot(query(collection(db,'boxes'), orderBy('name','asc')), snap => {
+  _unsubBoxes = onSnapshot(query(co('boxes'), orderBy('name','asc')), snap => {
     boxes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateBoxFilter(); renderBoxList();
   }, err => { console.error('Firestore boxes:', err); });
 
-  _unsubTxns = onSnapshot(query(collection(db,'transactions'), orderBy('createdAt','desc'), limit(300)), snap => {
+  _unsubTxns = onSnapshot(query(co('transactions'), orderBy('createdAt','desc'), limit(300)), snap => {
     transactions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }, err => { console.error('Firestore transactions:', err); });
 
   // Live badge updates — react instantly when sync adds/approves items
-  _unsubHcpPending = onSnapshot(collection(db,'hcpPending'), snap => {
+  _unsubHcpPending = onSnapshot(co('hcpPending'), snap => {
     hcpPendingItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
       .filter(i => i.status === 'pending')
@@ -1347,7 +1485,7 @@ function startListeners() {
     updateHCPBadge();
   }, err => console.warn('hcpPending listener:', err));
 
-  _unsubHcpUnmatched = onSnapshot(collection(db,'hcpUnmatched'), snap => {
+  _unsubHcpUnmatched = onSnapshot(co('hcpUnmatched'), snap => {
     hcpUnmatchedItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
       .filter(i => i.status === 'pending')
@@ -1685,15 +1823,15 @@ window.saveItem = async function() {
   };
   try {
     if (editingId) {
-      await updateDoc(doc(db,'parts',editingId), data);
+      await updateDoc(coDoc('parts',editingId), data);
       toast('Part updated!','ok');
     } else {
       data.partNumber = genPartNum();
       data.createdAt  = serverTimestamp();
-      await addDoc(collection(db,'parts'), data);
+      await addDoc(co('parts'), data);
       toast('Part saved!','ok');
       // Record add transaction
-      await addDoc(collection(db,'transactions'),{
+      await addDoc(co('transactions'),{
         type:'add', partName:name, quantity:data.quantity, createdAt:serverTimestamp()
       });
     }
@@ -1764,7 +1902,7 @@ window.openDetail = function(id) {
 window.deleteItem = async function(id) {
   if (!confirm('Delete this part? This cannot be undone.')) return;
   try {
-    await deleteDoc(doc(db,'parts',id));
+    await deleteDoc(coDoc('parts',id));
     closeModal('detailModal'); toast('Part deleted.','ok');
   } catch(err) { toast('Delete failed: '+err.message,'err'); }
 };
@@ -1844,8 +1982,8 @@ window.confirmQty = async function() {
     const jobRef = document.getElementById('qtyJobRef').value.trim();
     const newQty = Math.max(0, currentQty - qtyDelta);
     try {
-      await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
-      await addDoc(collection(db,'transactions'), {
+      await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      await addDoc(co('transactions'), {
         partId, partName: p.name, partNumber: p.partNumber||'',
         type:'use', quantity: qtyDelta, pulledBy, jobRef: jobRef||null,
         locationId: p.boxId||null, locationName: p.boxName||null,
@@ -1858,8 +1996,8 @@ window.confirmQty = async function() {
   } else {
     const newQty = currentQty + qtyDelta;
     try {
-      await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
-      await addDoc(collection(db,'transactions'), {
+      await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      await addDoc(co('transactions'), {
         partId, partName: p.name, partNumber: p.partNumber||'',
         type:'restock', quantity: qtyDelta, createdAt: serverTimestamp()
       });
@@ -1872,7 +2010,7 @@ window.confirmQty = async function() {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 window.openSettings = function() {
-  renderCatEditor(); renderBoxList(); renderTeamList(); loadBrandingForm();
+  renderCatEditor(); renderBoxList(); renderTeamList(); loadBrandingForm(); loadInviteCode();
   document.querySelectorAll('#settingsModal .stab').forEach((t,i)=>t.classList.toggle('active',i===0));
   document.querySelectorAll('#settingsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
   showModal('settingsModal');
@@ -1936,7 +2074,7 @@ window.resetCat = function(cat) {
 
 window.saveSettings = async function() {
   try {
-    await setDoc(doc(db,'settings','app'), {
+    await setDoc(coDoc('settings','app'), {
       subcategories: settings.subcategories,
       companyName: settings.companyName,
       appSubtitle: settings.appSubtitle,
@@ -1965,7 +2103,7 @@ window.addBox = async function() {
   const name = document.getElementById('newBoxName').value.trim();
   if (!name) { toast('Location name is required','err'); return; }
   try {
-    await addDoc(collection(db,'boxes'),{ name, createdAt:serverTimestamp() });
+    await addDoc(co('boxes'),{ name, createdAt:serverTimestamp() });
     document.getElementById('newBoxName').value='';
     toast('Location added!','ok');
   } catch(err) { toast('Failed: '+err.message,'err'); }
@@ -1973,16 +2111,16 @@ window.addBox = async function() {
 
 window.deleteBox = async function(id) {
   if (!confirm('Delete this location? Parts assigned to it will remain but lose the location reference.')) return;
-  try { await deleteDoc(doc(db,'boxes',id)); toast('Location deleted.','ok'); }
+  try { await deleteDoc(coDoc('boxes',id)); toast('Location deleted.','ok'); }
   catch(err) { toast('Delete failed: '+err.message,'err'); }
 };
 
 async function seedDefaultLocations() {
-  const snap = await getDocs(collection(db,'boxes'));
+  const snap = await getDocs(co('boxes'));
   if (!snap.empty) return;
   const defaults = ['Shop','Storage 1','Storage 2','Van 1','Van 2'];
   for (const name of defaults) {
-    await addDoc(collection(db,'boxes'),{ name, createdAt:serverTimestamp() });
+    await addDoc(co('boxes'),{ name, createdAt:serverTimestamp() });
   }
 }
 
@@ -2043,7 +2181,7 @@ window.saveBranding = async function() {
   const appSubtitle = document.getElementById('sBrandSub').value.trim();
   const logoUrl = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
   try {
-    await setDoc(doc(db,'settings','app'), {
+    await setDoc(coDoc('settings','app'), {
       subcategories: settings.subcategories,
       companyName, appSubtitle, logoUrl
     });
@@ -2053,6 +2191,29 @@ window.saveBranding = async function() {
     applyBranding();
     toast('Branding saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
+};
+
+async function loadInviteCode() {
+  try {
+    const snap = await getDoc(doc(db,'companies',companyId));
+    if (snap.exists()) {
+      document.getElementById('inviteCodeDisplay').textContent = snap.data().inviteCode || '——';
+    }
+  } catch(e) { console.warn('loadInviteCode:', e); }
+}
+
+window.copyInviteCode = function() {
+  const code = document.getElementById('inviteCodeDisplay').textContent;
+  navigator.clipboard.writeText(code).then(()=>toast('Invite code copied!','ok'));
+};
+
+window.regenerateInviteCode = async function() {
+  const newCode = generateId(6);
+  try {
+    await updateDoc(doc(db,'companies',companyId), { inviteCode: newCode });
+    document.getElementById('inviteCodeDisplay').textContent = newCode;
+    toast('New invite code generated','ok');
+  } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
 // ─── Team management ─────────────────────────────────────────────────────────
@@ -2085,7 +2246,7 @@ window.deleteTech = async function(idx) {
 
 async function saveTeamSettings() {
   try {
-    await setDoc(doc(db,'settings','app'), {
+    await setDoc(coDoc('settings','app'), {
       subcategories: settings.subcategories,
       companyName: settings.companyName, appSubtitle: settings.appSubtitle,
       logoUrl: settings.logoUrl, techs: settings.techs
@@ -2214,8 +2375,8 @@ window.receiptDeductExisting = async function(id) {
   const qty = parseInt(item.quantity)||1;
   const newQty = Math.max(0, (parseInt(part.quantity)||0) - qty);
   try {
-    await updateDoc(doc(db,'parts',part.id), { quantity: newQty, updatedAt: serverTimestamp() });
-    await addDoc(collection(db,'transactions'), {
+    await updateDoc(coDoc('parts',part.id), { quantity: newQty, updatedAt: serverTimestamp() });
+    await addDoc(co('transactions'), {
       partId: part.id, partName: part.name, partNumber: part.partNumber||'',
       type: 'use', quantity: qty,
       pulledBy: currentUser?.displayName || currentUser?.email || 'Receipt scan',
@@ -2256,8 +2417,8 @@ window.confirmReceiptAdd = async function() {
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
         source:'receipt'
       };
-      await addDoc(collection(db,'parts'), data);
-      await addDoc(collection(db,'transactions'),{
+      await addDoc(co('parts'), data);
+      await addDoc(co('transactions'),{
         type:'add', partName:data.name, partNumber:data.partNumber,
         quantity:data.quantity, source:'receipt', createdAt:serverTimestamp()
       });
@@ -2525,7 +2686,7 @@ window.runHCPImport = async function() {
         const sellPrice = parseFloat((r.price||'0').replace(/[^0-9.]/g,''))||0;
         const cost      = parseFloat((r.cost||'0').replace(/[^0-9.]/g,''))||0;
         const cat   = mapHCPCategory(r.category);
-        await addDoc(collection(db,'parts'),{
+        await addDoc(co('parts'),{
           name:        r.name.trim(),
           category:    cat,
           subcategory: r.category.trim(),
@@ -2579,7 +2740,7 @@ window.fixHCPImportPrices = async function() {
       try {
         const cost = parseFloat(p.cost) || 0;
         if (cost === 0) { skipped++; return; } // no cost data, skip
-        await updateDoc(doc(db, 'parts', p.id), {
+        await updateDoc(coDoc('parts', p.id), {
           price:     cost,               // set price = buy cost
           sellPrice: parseFloat(p.price) || 0,  // save old sell price for reference
           updatedAt: serverTimestamp()
@@ -2605,7 +2766,7 @@ window.saveHCPApiKey = async function() {
   const key = document.getElementById('hcpApiKeyInput').value.trim();
   if (!key) { toast('Enter your HCP API key first','err'); return; }
   try {
-    await setDoc(doc(db,'settings','hcp'), { apiKey: key }, { merge: true });
+    await setDoc(coDoc('settings','hcp'), { apiKey: key }, { merge: true });
     toast('HCP API key saved!','ok');
     document.getElementById('hcpApiKeyInput').value = '••••••••••••••••';
   } catch(e) { toast('Save failed: '+e.message,'err'); }
@@ -2613,7 +2774,7 @@ window.saveHCPApiKey = async function() {
 
 async function loadHCPApiKey() {
   try {
-    const snap = await getDoc(doc(db,'settings','hcp'));
+    const snap = await getDoc(coDoc('settings','hcp'));
     if (snap.exists() && snap.data().apiKey) {
       document.getElementById('hcpApiKeyInput').value = '••••••••••••••••';
       return snap.data().apiKey;
@@ -2624,7 +2785,7 @@ async function loadHCPApiKey() {
 
 async function loadHCPMeta() {
   try {
-    const snap = await getDoc(doc(db,'settings','hcp'));
+    const snap = await getDoc(coDoc('settings','hcp'));
     if (snap.exists()) return snap.data();
   } catch(e) {}
   return {};
@@ -2632,7 +2793,7 @@ async function loadHCPMeta() {
 
 window.resetHCPSyncDate = async function() {
   try {
-    await setDoc(doc(db,'settings','hcp'), { lastSyncAt: null }, { merge: true });
+    await setDoc(coDoc('settings','hcp'), { lastSyncAt: null }, { merge: true });
     const statusEl = document.getElementById('hcpSyncStatus');
     statusEl.innerHTML = '<span style="color:var(--green)">✓ Sync date reset — next sync will scan the last 90 days</span>';
     toast('Sync date cleared — hit Sync Now to re-scan 90 days','ok');
@@ -2685,7 +2846,7 @@ window.runHCPSync = async function() {
     // Build tech-name → locationId map from approved users
     const techLocationMap = {};
     try {
-      const usersSnap = await getDocs(collection(db,'users'));
+      const usersSnap = await getDocs(co('users'));
       usersSnap.docs.forEach(d => {
         const u = d.data();
         if (u.locationId) {
@@ -2706,8 +2867,8 @@ window.runHCPSync = async function() {
     const processedJobIds = new Set();
     try {
       const [pendingSnap, syncedSnap] = await Promise.all([
-        getDocs(collection(db,'hcpPending')),
-        getDocs(collection(db,'hcpSyncedJobs'))
+        getDocs(co('hcpPending')),
+        getDocs(co('hcpSyncedJobs'))
       ]);
       pendingSnap.docs.forEach(d => { if (d.data().jobId) processedJobIds.add(d.data().jobId); });
       syncedSnap.docs.forEach(d => { processedJobIds.add(d.id); }); // doc ID is the jobId
@@ -2754,10 +2915,10 @@ window.runHCPSync = async function() {
         }
       }
 
-      await addDoc(collection(db,'hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
+      await addDoc(co('hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
       // Permanently mark this jobId as processed so clearing hcpPending never causes re-sync
       if (item.jobId) {
-        await setDoc(doc(db,'hcpSyncedJobs', String(item.jobId)), {
+        await setDoc(coDoc('hcpSyncedJobs', String(item.jobId)), {
           syncedAt: serverTimestamp(), tech: finalItem.tech || ''
         }, { merge: true });
       }
@@ -2768,19 +2929,19 @@ window.runHCPSync = async function() {
     for (const item of unmatchedItems) {
       // Build a stable doc ID from jobId + itemName so re-syncing doesn't duplicate
       const safeId = `${item.jobId||item.jobNumber}_${(item.itemName||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40)}`;
-      await setDoc(doc(db,'hcpUnmatched', safeId), {
+      await setDoc(coDoc('hcpUnmatched', safeId), {
         ...item, status: 'pending', createdAt: serverTimestamp()
       }, { merge: true });
       // Also mark jobId as synced so these unmatched jobs don't repeat next sync
       if (item.jobId) {
-        await setDoc(doc(db,'hcpSyncedJobs', String(item.jobId)), {
+        await setDoc(coDoc('hcpSyncedJobs', String(item.jobId)), {
           syncedAt: serverTimestamp(), tech: item.tech || ''
         }, { merge: true });
       }
     }
 
     // Update lastSyncAt
-    await setDoc(doc(db,'settings','hcp'), {
+    await setDoc(coDoc('settings','hcp'), {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
@@ -2829,7 +2990,7 @@ window.runHCPSync = async function() {
 async function loadHCPPending() {
   try {
     // Simple query — no compound index needed. Filter client-side.
-    const snap = await getDocs(collection(db,'hcpPending'));
+    const snap = await getDocs(co('hcpPending'));
     hcpPendingItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
       .filter(i => i.status === 'pending')
@@ -2850,7 +3011,7 @@ function updateHCPBadge() {
 
 async function loadHCPUnmatched() {
   try {
-    const snap = await getDocs(collection(db,'hcpUnmatched'));
+    const snap = await getDocs(co('hcpUnmatched'));
     hcpUnmatchedItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
       .filter(i => i.status === 'pending')
@@ -2919,9 +3080,9 @@ window.approveHCPDeduction = async function(pendingId) {
     const currentQty = part ? (parseInt(part.quantity)||0) : (item.currentQty||0);
     const newQty = Math.max(0, currentQty - item.quantity);
     // Deduct inventory
-    await updateDoc(doc(db,'parts',item.partId), { quantity: newQty, updatedAt: serverTimestamp() });
+    await updateDoc(coDoc('parts',item.partId), { quantity: newQty, updatedAt: serverTimestamp() });
     // Log transaction — prefer location stored on the pending item (tech's van)
-    await addDoc(collection(db,'transactions'), {
+    await addDoc(co('transactions'), {
       partId: item.partId, partName: item.partName, partNumber: item.partNumber||'',
       type: 'use', quantity: item.quantity,
       pulledBy: item.tech, jobRef: `HCP Job #${item.jobNumber}`,
@@ -2931,7 +3092,7 @@ window.approveHCPDeduction = async function(pendingId) {
       createdAt: serverTimestamp()
     });
     // Mark pending as approved
-    await updateDoc(doc(db,'hcpPending',pendingId), { status:'approved', approvedAt: serverTimestamp() });
+    await updateDoc(coDoc('hcpPending',pendingId), { status:'approved', approvedAt: serverTimestamp() });
     hcpPendingItems = hcpPendingItems.filter(i=>i._id!==pendingId);
     updateHCPBadge();
     renderHCPPendingList();
@@ -3105,13 +3266,13 @@ window.approveUnmatchedMatch = async function(id, partId) {
   try {
     const newQty = Math.max(0, (parseInt(part.quantity)||0) - (item.quantity||1));
     // Deduct inventory
-    await updateDoc(doc(db,'parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+    await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
     // Save HCP UUID to part so future syncs auto-match
     if (item.hcpUuid) {
-      await updateDoc(doc(db,'parts',partId), { hcpUuid: item.hcpUuid });
+      await updateDoc(coDoc('parts',partId), { hcpUuid: item.hcpUuid });
     }
     // Log transaction
-    await addDoc(collection(db,'transactions'), {
+    await addDoc(co('transactions'), {
       partId, partName: part.name, partNumber: part.partNumber||'',
       type:'use', quantity: item.quantity||1,
       pulledBy: item.tech||'HCP Sync', jobRef: `HCP Job #${item.jobNumber}`,
@@ -3119,7 +3280,7 @@ window.approveUnmatchedMatch = async function(id, partId) {
       source:'hcp_reconciled', createdAt: serverTimestamp()
     });
     // Mark unmatched as resolved
-    await updateDoc(doc(db,'hcpUnmatched',id), { status:'resolved', resolvedAt: serverTimestamp(), resolvedToPartId: partId });
+    await updateDoc(coDoc('hcpUnmatched',id), { status:'resolved', resolvedAt: serverTimestamp(), resolvedToPartId: partId });
     hcpUnmatchedItems = hcpUnmatchedItems.filter(i=>i._id!==id);
     updateUnmatchedBadge();
     document.getElementById('unmatchedCard_'+id)?.remove();
@@ -3132,7 +3293,7 @@ window.approveUnmatchedMatch = async function(id, partId) {
 
 window.skipUnmatched = async function(id) {
   try {
-    await updateDoc(doc(db,'hcpUnmatched',id), { status:'skipped', skippedAt: serverTimestamp() });
+    await updateDoc(coDoc('hcpUnmatched',id), { status:'skipped', skippedAt: serverTimestamp() });
     hcpUnmatchedItems = hcpUnmatchedItems.filter(i=>i._id!==id);
     updateUnmatchedBadge();
     document.getElementById('unmatchedCard_'+id)?.remove();
@@ -3142,7 +3303,7 @@ window.skipUnmatched = async function(id) {
 
 window.skipHCPDeduction = async function(pendingId) {
   try {
-    await updateDoc(doc(db,'hcpPending',pendingId), { status:'skipped', skippedAt: serverTimestamp() });
+    await updateDoc(coDoc('hcpPending',pendingId), { status:'skipped', skippedAt: serverTimestamp() });
     hcpPendingItems = hcpPendingItems.filter(i=>i._id!==pendingId);
     updateHCPBadge();
     renderHCPPendingList();
@@ -3247,7 +3408,7 @@ window.confirmTransfer = async function() {
   try {
     // Deduct from source
     const newSrcQty = srcQty - xfrQty;
-    await updateDoc(doc(db,'parts',partId), { quantity: newSrcQty, updatedAt: serverTimestamp() });
+    await updateDoc(coDoc('parts',partId), { quantity: newSrcQty, updatedAt: serverTimestamp() });
 
     // Find existing record for this part at the destination (same partNumber, or same name+category)
     let destPart = parts.find(i =>
@@ -3258,13 +3419,13 @@ window.confirmTransfer = async function() {
 
     if (destPart) {
       // Add to existing record at destination
-      await updateDoc(doc(db,'parts',destPart.id), {
+      await updateDoc(coDoc('parts',destPart.id), {
         quantity: (destPart.quantity||0) + xfrQty, updatedAt: serverTimestamp()
       });
     } else {
       // Create a new part record at the destination
       const { id: _id, ...clone } = p;
-      await addDoc(collection(db,'parts'), {
+      await addDoc(co('parts'), {
         ...clone,
         quantity: xfrQty,
         boxId: toId,
@@ -3276,7 +3437,7 @@ window.confirmTransfer = async function() {
     }
 
     // Log the transaction
-    await addDoc(collection(db,'transactions'), {
+    await addDoc(co('transactions'), {
       type:'transfer', partId, partName:p.name, partNumber:p.partNumber||'',
       quantity: xfrQty,
       fromLocationId:fromId, fromLocationName:fromBox?fromBox.name:'',
