@@ -1410,18 +1410,24 @@ onAuthStateChanged(auth, async user => {
   companyId = regData.companyId;
 
   if (regData.status === 'pending') {
-    // Waiting for admin approval — show pending screen
-    showPendingScreen(user);
-    // Watch for approval
-    const unsub = onSnapshot(regRef, snap => {
-      if (snap.exists() && snap.data().status === 'approved') {
-        unsub();
-        const rd = snap.data();
-        currentUserData = { role: rd.role, status: 'approved', locationId: rd.locationId || null, displayName: user.displayName || user.email, email: user.email };
-        hideAllScreens();
-      }
-    });
-    return;
+    // Admins are always approved — auto-fix their registry entry if stuck
+    if (regData.role === 'admin') {
+      await updateDoc(regRef, { status: 'approved' });
+      regData.status = 'approved';
+    } else {
+      // Waiting for admin approval — show pending screen
+      showPendingScreen(user);
+      // Watch for approval
+      const unsub = onSnapshot(regRef, snap => {
+        if (snap.exists() && snap.data().status === 'approved') {
+          unsub();
+          const rd = snap.data();
+          currentUserData = { role: rd.role, status: 'approved', locationId: rd.locationId || null, displayName: user.displayName || user.email, email: user.email };
+          hideAllScreens();
+        }
+      });
+      return;
+    }
   }
 
   // Approved — load company-scoped user record for role/location
