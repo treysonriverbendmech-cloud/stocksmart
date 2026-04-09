@@ -1439,15 +1439,6 @@ getRedirectResult(auth).then(result => {
 onAuthStateChanged(auth, async user => {
   currentUser = user;
 
-  // Tear down any existing listeners and reset companyId for the new user
-  stopListeners();
-  companyId = null;
-
-  // Reset branding to defaults whenever auth state changes (prevents previous user's branding bleeding through)
-  settings.companyName = '';
-  settings.appSubtitle = '';
-  settings.logoUrl     = '';
-  applyBranding();
 
   if (!user) {
     hideSplash();
@@ -1572,7 +1563,7 @@ applyBranding();
 let _unsubParts = null, _unsubBoxes = null, _unsubTxns = null, _unsubHcpPending = null, _unsubHcpUnmatched = null;
 
 function startListeners() {
-  if (_unsubParts) return; // already running
+  stopListeners(); // always tear down first in case company changed
   _unsubParts = onSnapshot(query(co('parts'), orderBy('createdAt','desc')), snap => {
     parts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateStats(); updateBoxFilter(); applyFilters();
