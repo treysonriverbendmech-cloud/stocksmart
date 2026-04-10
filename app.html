@@ -1862,17 +1862,18 @@ window.fabAction = function(action) {
 let _aiSearchTimer = null;
 let _aiActive = false;
 
-// Detects whether the query looks like a natural language question vs a keyword
+// Detects whether the query looks like natural language vs a single keyword
 function isNaturalLanguage(text) {
   const q = text.trim().toLowerCase();
-  if (q.length < 8) return false; // too short — just a keyword
+  if (q.length < 6) return false; // too short to be anything but a keyword
   if (q.endsWith('?')) return true;
-  const starters = ['find','do we','which','how','what','where','get me','show me','i need','looking for','any ','do you have','is there','can i get'];
+  // Explicit question starters always trigger AI
+  const starters = ['find','do we','which','how','what','where','get me','show me',
+                    'i need','looking for','do you have','is there','can i get','any '];
   if (starters.some(s => q.startsWith(s))) return true;
-  // More than 4 words and contains preposition/context words = likely a question
-  const wordCount = q.split(/\s+/).length;
-  const contextWords = ['for','that','with','works','used','need','have','some'];
-  return wordCount >= 4 && contextWords.some(w => q.includes(' ' + w + ' ') || q.endsWith(' ' + w));
+  // 3+ words = descriptive phrase, let AI interpret it
+  // (catches "hard start kit", "carrier dual run cap", "45/5 capacitor carrier", etc.)
+  return q.split(/\s+/).length >= 3;
 }
 
 // Called on every keystroke in the search box
@@ -1883,61 +1884,64 @@ window.onSearchInput = function() {
   // If AI was active and user edits the query, clear AI state first
   if (_aiActive) clearAiSearch(false);
 
-  // Always run plain search immediately for instant feel
+  // Always run plain search immediately — never slows down
   applyFilters();
 
-  // Schedule AI search if query looks like a question (fires after user pauses)
   if (isNaturalLanguage(raw)) {
-    _aiSearchTimer = setTimeout(() => runAiSearch(raw), 750);
+    // Show spinner immediately so it feels responsive before API call fires
+    document.getElementById('searchIco').style.display = 'none';
+    document.getElementById('searchAiIco').style.display = 'inline';
+    document.getElementById('searchAiIco').textContent = '✨';
+    // Fire AI after user pauses typing
+    _aiSearchTimer = setTimeout(() => runAiSearch(raw), 500);
+  } else {
+    resetSearchIcons();
   }
 };
 
 async function runAiSearch(query) {
-  // Show AI thinking state
-  document.getElementById('searchIco').style.display = 'none';
-  document.getElementById('searchAiIco').style.display = 'inline';
   document.getElementById('searchAiIco').textContent = '⏳';
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8s max
+
     const res = await fetch('/.netlify/functions/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+
     if (!res.ok) throw new Error('Search failed: ' + res.status);
     const data = await res.json();
 
     _aiActive = true;
 
-    // Apply AI-returned filters to the dropdowns
+    // Apply category filter
     if (data.category) {
       document.getElementById('catFilter').value = data.category;
-      // Trigger subcategory population
-      onCatFilterChange();
-      if (data.subcategory) {
-        // Small delay so subcategory options populate first
-        setTimeout(() => {
-          document.getElementById('subcatFilter').value = data.subcategory;
-          applyFiltersWithAiKeywords(data.keywords);
-        }, 50);
-      } else {
-        applyFiltersWithAiKeywords(data.keywords);
-      }
-    } else {
-      applyFiltersWithAiKeywords(data.keywords);
+      onCatFilterChange(); // populates subcategory options
+    }
+    // Apply subcategory (needs a tick for options to render)
+    if (data.subcategory) {
+      await new Promise(r => setTimeout(r, 30));
+      document.getElementById('subcatFilter').value = data.subcategory;
     }
 
-    // Show the AI banner
-    const banner = document.getElementById('aiBanner');
-    document.getElementById('aiBannerText').textContent = '✨ ' + (data.summary || 'AI search results');
-    banner.style.display = 'flex';
+    // Put AI keywords into search box and run filters
+    applyFiltersWithAiKeywords(data.keywords);
 
-    // Switch to sparkle icon
+    // Show result banner
+    document.getElementById('aiBannerText').textContent = data.summary || 'AI search results';
+    document.getElementById('aiBanner').style.display = 'flex';
     document.getElementById('searchAiIco').textContent = '✨';
 
   } catch (err) {
-    console.warn('AI search failed, falling back to plain search:', err.message);
+    console.warn('AI search failed, using plain search:', err.message);
     resetSearchIcons();
+    // Plain search is already showing from the instant applyFilters() call above
   }
 }
 
