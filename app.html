@@ -573,9 +573,8 @@
       </div>
       <!-- Mobile: Add Part button + hamburger -->
       <div style="display:flex;align-items:center;gap:6px">
-        <button class="btn btn-primary btn-mobile-only" onclick="openAdd()" style="display:none;padding:7px 12px;font-size:13px;font-weight:700">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-          Add
+        <button class="btn btn-primary btn-mobile-only" onclick="toggleAiBar()" id="aiHeaderBtn" style="display:none;padding:7px 12px;font-size:13px;font-weight:700;background:var(--purple)">
+          ✨ Ask AI
         </button>
         <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -584,6 +583,17 @@
     </div>
   </div>
 </header>
+
+<!-- ═══════ AI ASK BAR (mobile only, slides down from header) ═══════ -->
+<div id="aiBar" style="display:none;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px">
+  <div style="display:flex;gap:8px;align-items:center">
+    <input id="aiBarInput" class="search-input" placeholder="Ask anything… find me a hard start kit" style="flex:1"
+      onkeydown="if(event.key==='Enter')submitAiBar()">
+    <button class="btn btn-primary" onclick="submitAiBar()" style="padding:8px 14px;font-size:13px;flex-shrink:0">Search</button>
+    <button onclick="closeAiBar()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:0 4px">✕</button>
+  </div>
+  <div id="aiBarStatus" style="font-size:12px;color:var(--text-muted);margin-top:6px;display:none"></div>
+</div>
 
 <!-- ═══════ FLOATING ACTION BUTTON ═══════ -->
 <div class="fab" id="fab">
@@ -618,9 +628,8 @@
     <!-- Row 1: search + view toggle always visible together -->
     <div class="toolbar-top">
       <div class="search-wrap">
-        <svg class="ico" id="searchIco" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
-        <span class="ico" id="searchAiIco" style="display:none;font-size:14px;line-height:1">✨</span>
-        <input class="search-input" id="searchInput" placeholder="Search or ask a question…" oninput="onSearchInput()">
+        <svg class="ico" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        <input class="search-input" id="searchInput" placeholder="Search name, part #, box #, van…" oninput="applyFilters()">
       </div>
       <div class="view-pills">
         <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
@@ -1747,9 +1756,39 @@ window.onLocationFilterChange = function() {
   applyFilters();
 };
 
+// ─── Number word → digit normalizer (fixes voice-to-text search) ─────────────
+function normalizeNumbers(text) {
+  const ones = {zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
+                ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,
+                sixteen:16,seventeen:17,eighteen:18,nineteen:19};
+  const tens = {twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
+  // Common HVAC refrigerant voice patterns
+  const refrigerants = {'r four ten a':'r410a','r four ten':'r410a','r twenty two':'r22',
+                        'r four o seven c':'r407c','r four oh four a':'r404a',
+                        'r four fifty four b':'r454b','r thirty two':'r32'};
+  let s = text.toLowerCase();
+  // Refrigerant names first
+  Object.entries(refrigerants).forEach(([k,v]) => { s = s.split(k).join(v); });
+  // "one half" → "1/2", "three quarter" → "3/4"
+  s = s.replace(/\bone half\b/g,'1/2').replace(/\bthree quarter[s]?\b/g,'3/4')
+       .replace(/\bone quarter\b/g,'1/4');
+  // Tens + ones: "forty five" → "45"
+  Object.entries(tens).forEach(([t, tv]) => {
+    Object.entries(ones).forEach(([o, ov]) => {
+      s = s.replace(new RegExp(`\\b${t}[-\\s]${o}\\b`,'g'), String(tv + ov));
+    });
+    s = s.replace(new RegExp(`\\b${t}\\b`,'g'), String(tv));
+  });
+  // Single ones
+  Object.entries(ones).forEach(([o, ov]) => {
+    s = s.replace(new RegExp(`\\b${o}\\b`,'g'), String(ov));
+  });
+  return s;
+}
+
 // ─── Filters ──────────────────────────────────────────────────────────────────
 window.applyFilters = function() {
-  const raw    = document.getElementById('searchInput').value.trim().toLowerCase();
+  const raw    = normalizeNumbers(document.getElementById('searchInput').value.trim().toLowerCase());
   const cat    = document.getElementById('catFilter').value;
   const subcat = document.getElementById('subcatFilter').value;
   const boxId  = document.getElementById('boxFilter').value;
@@ -1866,54 +1905,39 @@ window.fabAction = function(action) {
   else if (action === 'receipt') openReceipt();
 };
 
-// ─── AI Search ────────────────────────────────────────────────────────────────
-let _aiSearchTimer = null;
+// ─── AI Ask Bar (header button, separate from search bar) ────────────────────
 let _aiActive = false;
-let _aiKeywords = []; // stored separately so applyFilters can use OR logic
+let _aiKeywords = [];
 
-// Detects whether the query looks like natural language vs a single keyword
-function isNaturalLanguage(text) {
-  const q = text.trim().toLowerCase();
-  if (q.length < 6) return false; // too short to be anything but a keyword
-  if (q.endsWith('?')) return true;
-  // Explicit question starters always trigger AI
-  const starters = ['find','do we','which','how','what','where','get me','show me',
-                    'i need','looking for','do you have','is there','can i get','any '];
-  if (starters.some(s => q.startsWith(s))) return true;
-  // 3+ words = descriptive phrase, let AI interpret it
-  // (catches "hard start kit", "carrier dual run cap", "45/5 capacitor carrier", etc.)
-  return q.split(/\s+/).length >= 3;
-}
-
-// Called on every keystroke in the search box
-window.onSearchInput = function() {
-  const raw = document.getElementById('searchInput').value;
-  clearTimeout(_aiSearchTimer);
-
-  // If AI was active and user edits the query, clear AI state first
-  if (_aiActive) clearAiSearch(false);
-
-  // Always run plain search immediately — never slows down
-  applyFilters();
-
-  if (isNaturalLanguage(raw)) {
-    // Show spinner immediately so it feels responsive before API call fires
-    document.getElementById('searchIco').style.display = 'none';
-    document.getElementById('searchAiIco').style.display = 'inline';
-    document.getElementById('searchAiIco').textContent = '✨';
-    // Fire AI after user pauses typing — 1.5s gives voice-to-text time to settle
-    _aiSearchTimer = setTimeout(() => runAiSearch(raw), 1500);
+window.toggleAiBar = function() {
+  const bar = document.getElementById('aiBar');
+  const open = bar.style.display === 'none';
+  bar.style.display = open ? 'block' : 'none';
+  if (open) {
+    document.getElementById('aiBarInput').focus();
+    document.getElementById('aiBarStatus').style.display = 'none';
   } else {
-    resetSearchIcons();
+    closeAiBar();
   }
 };
 
-async function runAiSearch(query) {
-  document.getElementById('searchAiIco').textContent = '⏳';
+window.closeAiBar = function() {
+  document.getElementById('aiBar').style.display = 'none';
+  document.getElementById('aiBarInput').value = '';
+  document.getElementById('aiBarStatus').style.display = 'none';
+  clearAiResults();
+};
+
+window.submitAiBar = async function() {
+  const query = document.getElementById('aiBarInput').value.trim();
+  if (!query) return;
+  const status = document.getElementById('aiBarStatus');
+  status.textContent = '✨ Searching…';
+  status.style.display = 'block';
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8s max
+    setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch('/.netlify/functions/search', {
       method: 'POST',
@@ -1921,67 +1945,50 @@ async function runAiSearch(query) {
       body: JSON.stringify({ query }),
       signal: controller.signal
     });
-    clearTimeout(timeout);
-
-    if (!res.ok) throw new Error('Search failed: ' + res.status);
+    if (!res.ok) throw new Error('status ' + res.status);
     const data = await res.json();
 
-    // Set category quietly — rebuild subcategory options WITHOUT calling applyFilters yet
+    // Set filters silently
     if (data.category) {
       document.getElementById('catFilter').value = data.category;
       const subSel = document.getElementById('subcatFilter');
       subSel.innerHTML = '<option value="">All Subcategories</option>';
-      const subs = settings.subcategories[data.category] || [];
-      subs.forEach(s => { const o = document.createElement('option'); o.value = o.textContent = s; subSel.appendChild(o); });
+      (settings.subcategories[data.category] || []).forEach(s => {
+        const o = document.createElement('option'); o.value = o.textContent = s; subSel.appendChild(o);
+      });
     }
-    if (data.subcategory) {
-      document.getElementById('subcatFilter').value = data.subcategory;
-    }
+    if (data.subcategory) document.getElementById('subcatFilter').value = data.subcategory;
 
-    // NOW set active state and keywords, then fire filters once — clean single render
+    // Apply OR keyword logic and render
     _aiActive = true;
-    applyFiltersWithAiKeywords(data.keywords);
+    _aiKeywords = (data.keywords || []).map(k => k.toLowerCase().trim()).filter(Boolean);
+    document.getElementById('searchInput').value = '';
+    applyFilters();
 
-    // Show result banner
+    // Update banner and status
+    const count = document.getElementById('grid').querySelectorAll('.card,.part-row').length;
+    status.textContent = `✨ ${data.summary || 'AI results'} — ${count} found`;
     document.getElementById('aiBannerText').textContent = data.summary || 'AI search results';
     document.getElementById('aiBanner').style.display = 'flex';
-    document.getElementById('searchAiIco').textContent = '✨';
 
   } catch (err) {
-    console.warn('AI search failed, using plain search:', err.message);
-    resetSearchIcons();
-    // Plain search is already showing from the instant applyFilters() call above
+    status.textContent = '⚠️ Search failed — try plain search above';
+    console.warn('AI ask failed:', err.message);
   }
-}
-
-// Runs applyFilters but with AI keywords injected into the search box
-function applyFiltersWithAiKeywords(keywords) {
-  // Store keywords for OR logic in applyFilters — don't jam them into the search box
-  _aiKeywords = (keywords || []).map(k => k.toLowerCase().trim()).filter(Boolean);
-  // Clear the search box so plain AND logic doesn't interfere
-  document.getElementById('searchInput').value = '';
-  applyFilters();
-}
-
-// Clear AI state and go back to plain search
-window.clearAiSearch = function(resetInput = true) {
-  _aiActive = false;
-  _aiKeywords = [];
-  clearTimeout(_aiSearchTimer);
-  if (resetInput) document.getElementById('searchInput').value = '';
-  document.getElementById('catFilter').value = '';
-  document.getElementById('subcatFilter').value = '';
-  document.getElementById('boxFilter').value = '';
-  onCatFilterChange();
-  document.getElementById('aiBanner').style.display = 'none';
-  resetSearchIcons();
-  applyFilters();
 };
 
-function resetSearchIcons() {
-  document.getElementById('searchIco').style.display = '';
-  document.getElementById('searchAiIco').style.display = 'none';
+function clearAiResults() {
+  _aiActive = false;
+  _aiKeywords = [];
+  document.getElementById('catFilter').value = '';
+  document.getElementById('subcatFilter').value = '';
+  onCatFilterChange();
+  document.getElementById('aiBanner').style.display = 'none';
+  applyFilters();
 }
+
+// Clear button on banner still works
+window.clearAiSearch = function() { closeAiBar(); };
 
 window.openAdd = function(id=null) {
   editingId = id;
