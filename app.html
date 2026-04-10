@@ -2781,8 +2781,18 @@ function renderReorderList() {
 // (populateUsageTechFilter and renderUsageReport defined below with full filter support)
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
-function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.body.style.overflow='hidden'; }
-window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); if(!document.querySelector('.overlay:not(.hidden)')) document.body.style.overflow=''; };
+function showModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('fab').style.display = 'none'; // hide FAB inside any modal
+}
+window.closeModal = function(id) {
+  document.getElementById(id).classList.add('hidden');
+  if (!document.querySelector('.overlay:not(.hidden)')) {
+    document.body.style.overflow = '';
+    document.getElementById('fab').style.display = ''; // restore FAB when back on main screen
+  }
+};
 window.overlayClick = function(e,id) { if(e.target===e.currentTarget) closeModal(id); };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
