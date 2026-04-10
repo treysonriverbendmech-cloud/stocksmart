@@ -1766,14 +1766,19 @@ window.applyFilters = function() {
     if (subcat && p.subcategory !== subcat) return false;
     if (boxId  && p.boxId       !== boxId)  return false;
     if (boxNum && (p.boxNumber||'').trim() !== boxNum) return false;
-    if (!raw) return true;
 
     const kw  = (p.keywords||[]).join(' ').toLowerCase();
     const txt = [p.name, p.partNumber, p.notes, p.category, p.subcategory, p.boxName, p.boxNumber, kw].join(' ').toLowerCase();
     const txtNorm = norm(txt);
 
-    // Every token must match — either as a plain substring OR in the normalized version
-    // This catches: "5 MFD" matching "5MFD", "5mfd" matching "5 MFD", "45/5" matching "45/5 uF"
+    // AI mode: OR logic — any keyword match surfaces the part
+    // More keywords = broader results, not narrower
+    if (_aiActive && _aiKeywords.length) {
+      return _aiKeywords.some(k => txt.includes(k.toLowerCase()) || txtNorm.includes(norm(k)));
+    }
+
+    // Plain search: AND logic — every typed word must match (existing behaviour)
+    if (!raw) return true;
     return tokens.every(token => txt.includes(token) || txtNorm.includes(norm(token)));
   });
   renderGrid();
@@ -1861,6 +1866,7 @@ window.fabAction = function(action) {
 // ─── AI Search ────────────────────────────────────────────────────────────────
 let _aiSearchTimer = null;
 let _aiActive = false;
+let _aiKeywords = []; // stored separately so applyFilters can use OR logic
 
 // Detects whether the query looks like natural language vs a single keyword
 function isNaturalLanguage(text) {
@@ -1947,16 +1953,17 @@ async function runAiSearch(query) {
 
 // Runs applyFilters but with AI keywords injected into the search box
 function applyFiltersWithAiKeywords(keywords) {
-  if (keywords && keywords.length) {
-    // Put keywords into the search box so user can see what AI searched for
-    document.getElementById('searchInput').value = keywords.join(' ');
-  }
+  // Store keywords for OR logic in applyFilters — don't jam them into the search box
+  _aiKeywords = (keywords || []).map(k => k.toLowerCase().trim()).filter(Boolean);
+  // Clear the search box so plain AND logic doesn't interfere
+  document.getElementById('searchInput').value = '';
   applyFilters();
 }
 
 // Clear AI state and go back to plain search
 window.clearAiSearch = function(resetInput = true) {
   _aiActive = false;
+  _aiKeywords = [];
   clearTimeout(_aiSearchTimer);
   if (resetInput) document.getElementById('searchInput').value = '';
   document.getElementById('catFilter').value = '';
