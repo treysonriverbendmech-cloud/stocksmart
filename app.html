@@ -89,7 +89,8 @@
 
     /* ── Toolbar ── */
     .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-    .toolbar-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .toolbar-top { display: contents; } /* on desktop, children flow into parent flex naturally */
+    .toolbar-filters { display: contents; } /* same — all items in one row on desktop */
     .search-wrap { flex: 1; min-width: 180px; position: relative; }
     .search-wrap .ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
     .search-input {
@@ -327,14 +328,15 @@
       .logo-text-wrap { display: none !important; }
       .header-center { display: flex !important; }
       .btn-mobile-only { display: flex !important; }
-      .toolbar { flex-wrap: wrap; gap: 6px; }
-      .search-wrap { width: 100%; min-width: unset; flex: unset; }
-      .toolbar-filters { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
-      .toolbar-filters::-webkit-scrollbar { display: none; }
-      .filter-sel { min-width: 130px; flex-shrink: 0; }
+      /* Toolbar: search+view on row 1, filters in 2×2 grid on row 2 */
+      .toolbar { flex-direction: column; gap: 6px; }
+      .toolbar-top { display: flex; gap: 6px; align-items: center; width: 100%; }
+      .search-wrap { flex: 1; min-width: 0; }
+      .toolbar-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+      .filter-sel { min-width: 0; width: 100%; font-size: 13px; padding: 8px 28px 8px 10px; }
     }
     /* Floating Action Button */
-    .fab { position: fixed; bottom: 24px; right: 20px; z-index: 900; display: none; flex-direction: column; align-items: flex-end; gap: 10px; }
+    .fab { position: fixed; bottom: 64px; right: 36px; z-index: 900; display: none; flex-direction: column; align-items: flex-end; gap: 10px; }
     @media (max-width: 640px) { .fab { display: flex; } }
     .fab-main { width: 52px; height: 52px; border-radius: 50%; background: var(--purple); color: #fff; border: none; font-size: 26px; font-weight: 300; box-shadow: 0 4px 16px rgba(99,102,241,0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
     .fab-main.open { transform: rotate(45deg); }
@@ -613,10 +615,22 @@
 <!-- ═══════ MAIN ═══════ -->
 <main class="main">
   <div class="toolbar">
-    <div class="search-wrap">
-      <svg class="ico" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
-      <input class="search-input" id="searchInput" placeholder="Search name, part #, box #, van…" oninput="applyFilters()">
+    <!-- Row 1: search + view toggle always visible together -->
+    <div class="toolbar-top">
+      <div class="search-wrap">
+        <svg class="ico" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        <input class="search-input" id="searchInput" placeholder="Search name, part #, box #, van…" oninput="applyFilters()">
+      </div>
+      <div class="view-pills">
+        <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
+          <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+        <button class="vpill" id="vList" onclick="setView('list')" title="List">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
     </div>
+    <!-- Row 2: filters in 2×2 grid -->
     <div class="toolbar-filters">
       <select class="filter-sel" id="boxFilter" onchange="onLocationFilterChange()">
         <option value="">All Locations</option>
@@ -631,14 +645,6 @@
       <select class="filter-sel" id="subcatFilter" onchange="applyFilters()">
         <option value="">All Subcategories</option>
       </select>
-      <div class="view-pills">
-        <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
-          <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        </button>
-        <button class="vpill" id="vList" onclick="setView('list')" title="List">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
-      </div>
     </div>
   </div>
   <div class="grid" id="grid"></div>
