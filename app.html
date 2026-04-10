@@ -314,8 +314,18 @@
     @media (max-width: 640px) {
       .header-desktop-btns { display: none !important; }
       .hamburger { display: flex; }
-      .btn-mobile-add { display: flex !important; }
+      .btn-mobile-add { display: none !important; }
+      .logo-mark { max-width: 80px !important; height: 32px !important; }
+      .logo-mark img { height: 32px !important; max-width: 80px !important; }
     }
+    /* Floating Action Button */
+    .fab { position: fixed; bottom: 24px; right: 20px; z-index: 900; display: none; flex-direction: column; align-items: flex-end; gap: 10px; }
+    @media (max-width: 640px) { .fab { display: flex; } }
+    .fab-main { width: 52px; height: 52px; border-radius: 50%; background: var(--purple); color: #fff; border: none; font-size: 26px; font-weight: 300; box-shadow: 0 4px 16px rgba(99,102,241,0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+    .fab-main.open { transform: rotate(45deg); }
+    .fab-menu { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+    .fab-option { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 24px; padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,0.3); white-space: nowrap; }
+    .fab-option:active { background: var(--surface2); }
   </style>
 </head>
 <body>
@@ -538,16 +548,6 @@
           Add Part
         </button>
       </div>
-      <!-- Add Part + Add Receipt always visible on mobile -->
-      <div class="btn-mobile-add" style="display:none;gap:6px">
-        <button class="btn btn-primary" onclick="openAdd()" style="display:flex;align-items:center;gap:5px;padding:9px 12px;font-size:13px;flex:1">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-          Add Part
-        </button>
-        <button class="btn btn-ghost" onclick="openReceipt()" style="display:flex;align-items:center;gap:5px;padding:9px 12px;font-size:13px;flex:1;border:1px solid var(--border)">
-          📋 Receipt
-        </button>
-      </div>
       <!-- Mobile hamburger -->
       <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -555,6 +555,18 @@
     </div>
   </div>
 </header>
+
+<!-- ═══════ FLOATING ACTION BUTTON ═══════ -->
+<div class="fab" id="fab">
+  <div class="fab-menu" id="fabMenu" style="display:none">
+    <button class="fab-option" onclick="fabAction('receipt')">📋 Add Receipt</button>
+    <button class="fab-option" onclick="fabAction('part')">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add Part
+    </button>
+  </div>
+  <button class="fab-main" id="fabBtn" onclick="toggleFab()">+</button>
+</div>
 
 <!-- Mobile nav dropdown -->
 <div class="nav-dropdown hidden" id="navDropdown">
@@ -1742,6 +1754,21 @@ window.setView = function(v) {
 };
 
 // ─── Open Add / Edit ──────────────────────────────────────────────────────────
+// ─── FAB ─────────────────────────────────────────────────────────────────────
+window.toggleFab = function() {
+  const menu = document.getElementById('fabMenu');
+  const btn  = document.getElementById('fabBtn');
+  const open = menu.style.display === 'none';
+  menu.style.display = open ? 'flex' : 'none';
+  btn.classList.toggle('open', open);
+};
+window.fabAction = function(action) {
+  document.getElementById('fabMenu').style.display = 'none';
+  document.getElementById('fabBtn').classList.remove('open');
+  if (action === 'part') openAdd();
+  else if (action === 'receipt') openReceipt();
+};
+
 window.openAdd = function(id=null) {
   editingId = id;
   document.getElementById('addTitle').textContent = id ? 'Edit Part' : 'Add Part';
