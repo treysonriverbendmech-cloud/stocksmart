@@ -1762,28 +1762,64 @@ function normalizeNumbers(text) {
                 ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,
                 sixteen:16,seventeen:17,eighteen:18,nineteen:19};
   const tens = {twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
-  // Common HVAC refrigerant voice patterns
+  let s = text.toLowerCase();
+
+  // ── Refrigerant voice patterns ──
   const refrigerants = {'r four ten a':'r410a','r four ten':'r410a','r twenty two':'r22',
                         'r four o seven c':'r407c','r four oh four a':'r404a',
                         'r four fifty four b':'r454b','r thirty two':'r32'};
-  let s = text.toLowerCase();
-  // Refrigerant names first
   Object.entries(refrigerants).forEach(([k,v]) => { s = s.split(k).join(v); });
-  // "one half" → "1/2", "three quarter" → "3/4"
-  s = s.replace(/\bone half\b/g,'1/2').replace(/\bthree quarter[s]?\b/g,'3/4')
-       .replace(/\bone quarter\b/g,'1/4');
-  // Tens + ones: "forty five" → "45"
+
+  // ── HVAC word → abbreviation ──
+  s = s.replace(/\bhorsepower\b/g,'hp')
+       .replace(/\bmicro\s?farad[s]?\b/g,'mfd')
+       .replace(/\bbritish thermal unit[s]?\b/g,'btu')
+       .replace(/\bvolt[s]?\b/g,'v')
+       .replace(/\bampere[s]?\b/g,'amp')
+       .replace(/\bsingle\s?phase\b/g,'1ph')
+       .replace(/\bthree\s?phase\b/g,'3ph');
+
+  // ── Fractions (must run before number words so "one" isn't converted first) ──
+  s = s.replace(/\bone\s?half\b/g,'1/2')
+       .replace(/\bthree\s?quarter[s]?\b/g,'3/4')
+       .replace(/\bone\s?quarter\b/g,'1/4')
+       .replace(/\bone\s?third\b/g,'1/3')
+       .replace(/\btwo\s?third[s]?\b/g,'2/3')
+       .replace(/\bthree\s?eighth[s]?\b/g,'3/8')
+       .replace(/\bfive\s?eighth[s]?\b/g,'5/8')
+       .replace(/\bseven\s?eighth[s]?\b/g,'7/8')
+       // bare fractions without "one/two/three" prefix
+       .replace(/\bhalf\b/g,'1/2')
+       .replace(/\bquarter\b/g,'1/4');
+
+  // ── Tens + ones: "forty five" → "45" ──
   Object.entries(tens).forEach(([t, tv]) => {
     Object.entries(ones).forEach(([o, ov]) => {
       s = s.replace(new RegExp(`\\b${t}[-\\s]${o}\\b`,'g'), String(tv + ov));
     });
     s = s.replace(new RegExp(`\\b${t}\\b`,'g'), String(tv));
   });
-  // Single ones
+
+  // ── Single digit words ──
   Object.entries(ones).forEach(([o, ov]) => {
     s = s.replace(new RegExp(`\\b${o}\\b`,'g'), String(ov));
   });
+
   return s;
+}
+
+// ── Relevance score: parts matching in the name rank above notes/keyword matches ──
+function relevanceScore(p, tokens) {
+  const name = normalizeNumbers((p.name || '').toLowerCase());
+  const norm = s => s.replace(/[\s.]+/g,'');
+  let score = 0;
+  tokens.forEach(t => {
+    if (name.includes(t) || norm(name).includes(norm(t))) score += 3; // name hit = highest
+    if ((p.partNumber||'').toLowerCase().includes(t)) score += 2;     // part# hit = high
+  });
+  // Bonus if all tokens appear together in the name (exact phrase-ish match)
+  if (tokens.every(t => name.includes(t))) score += 5;
+  return score;
 }
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
@@ -1823,6 +1859,12 @@ window.applyFilters = function() {
     if (!raw) return true;
     return tokens.every(token => txt.includes(token) || txtNorm.includes(norm(token)));
   });
+
+  // Sort by relevance: name/part# matches bubble to the top
+  if (raw && tokens.length) {
+    filtered.sort((a, b) => relevanceScore(b, tokens) - relevanceScore(a, tokens));
+  }
+
   renderGrid();
 };
 
