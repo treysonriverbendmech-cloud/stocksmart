@@ -43,13 +43,14 @@
     }
     .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; user-select: none; }
     .logo-mark {
-      height: 38px; min-width: 36px; max-width: 140px;
+      height: 38px; min-width: 36px; max-width: 40px;
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border-radius: 9px; display: flex; align-items: center; justify-content: center;
       font-size: 17px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(99,102,241,0.4);
-      overflow: visible; transition: max-width 0.2s;
+      overflow: hidden; transition: max-width 0.2s;
     }
-    .logo-mark img { width: auto; height: 38px; max-width: 140px; object-fit: contain; display: block; border-radius: 8px; }
+    .logo-mark.has-logo { max-width: 140px; border-radius: 8px; }
+    .logo-mark img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: inherit; }
     .logo-text { font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
     .logo-sub { font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
     .header-stats { display: flex; gap: 16px; margin-left: 4px; }
@@ -313,10 +314,10 @@
     .nav-item.nav-primary { color: var(--accent); }
     .nav-divider { height: 1px; background: var(--border); margin: 4px 0; }
     @media (max-width: 640px) {
-      .header-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
-      .logo { gap: 6px; }
-      .logo-mark { max-width: 80px !important; height: 22px !important; min-width: unset !important; border-radius: 5px !important; }
-      .logo-mark img { height: 22px !important; max-width: 80px !important; border-radius: 5px !important; }
+      .header-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 52px; overflow: hidden; }
+      .logo { gap: 6px; overflow: hidden; }
+      .logo-mark { height: 34px !important; max-width: 38px !important; min-width: 34px !important; border-radius: 7px !important; }
+      .logo-mark.has-logo { max-width: 90px !important; min-width: unset !important; }
       .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .logo-text { font-size: 15px !important; }
       .logo-sub { font-size: 9px !important; letter-spacing: 0.06em; }
@@ -617,8 +618,11 @@
       <input class="search-input" id="searchInput" placeholder="Search name, part #, box #, van…" oninput="applyFilters()">
     </div>
     <div class="toolbar-filters">
-      <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
-        <option value="">All Vans / Locations</option>
+      <select class="filter-sel" id="boxFilter" onchange="onLocationFilterChange()">
+        <option value="">All Locations</option>
+      </select>
+      <select class="filter-sel" id="boxNumFilter" onchange="applyFilters()">
+        <option value="">All Box #</option>
       </select>
       <select class="filter-sel" id="catFilter" onchange="onCatFilterChange()">
         <option value="">All Categories</option>
@@ -1686,7 +1690,35 @@ function updateBoxFilter() {
     if (b.id === cur) o.selected = true;
     sel.appendChild(o);
   });
+  updateBoxNumFilter();
 }
+
+function updateBoxNumFilter(locationId) {
+  const sel = document.getElementById('boxNumFilter');
+  const cur = sel.value;
+  // Collect unique non-empty box numbers, filtered by location if one is selected
+  const nums = [...new Set(
+    parts
+      .filter(p => !locationId || p.boxId === locationId)
+      .map(p => (p.boxNumber||'').trim())
+      .filter(Boolean)
+  )].sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+  sel.innerHTML = '<option value="">All Box #</option>';
+  nums.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n;
+    if (n === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+window.onLocationFilterChange = function() {
+  const locationId = document.getElementById('boxFilter').value;
+  updateBoxNumFilter(locationId);
+  // Reset box# filter when location changes
+  document.getElementById('boxNumFilter').value = '';
+  applyFilters();
+};
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 window.applyFilters = function() {
@@ -1694,6 +1726,7 @@ window.applyFilters = function() {
   const cat    = document.getElementById('catFilter').value;
   const subcat = document.getElementById('subcatFilter').value;
   const boxId  = document.getElementById('boxFilter').value;
+  const boxNum = document.getElementById('boxNumFilter').value;
 
   // Strip spaces and dots for fuzzy comparison — "5 MFD" ↔ "5MFD", "M.F.D" ↔ "MFD"
   const norm = s => (s||'').toLowerCase().replace(/[\s.]+/g, '');
@@ -1705,6 +1738,7 @@ window.applyFilters = function() {
     if (cat    && p.category    !== cat)    return false;
     if (subcat && p.subcategory !== subcat) return false;
     if (boxId  && p.boxId       !== boxId)  return false;
+    if (boxNum && (p.boxNumber||'').trim() !== boxNum) return false;
     if (!raw) return true;
 
     const kw  = (p.keywords||[]).join(' ').toLowerCase();
@@ -2311,20 +2345,17 @@ function applyBranding() {
   if (logo) {
     mark.style.background   = 'transparent';
     mark.style.boxShadow    = 'none';
-    mark.style.borderRadius = '8px';
     mark.style.padding      = '0';
-    mark.style.minWidth     = '90px';
-    mark.style.maxWidth     = '130px';
-    mark.style.height       = '38px';
-    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain;border-radius:8px">`;
+    // Let CSS handle all sizing — clear any previous inline overrides
+    mark.style.height = ''; mark.style.minWidth = ''; mark.style.maxWidth = '';
+    mark.classList.add('has-logo');
+    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;
   } else {
     mark.style.background   = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
     mark.style.boxShadow    = '0 0 0 1px rgba(99,102,241,0.4)';
-    mark.style.borderRadius = '9px';
     mark.style.padding      = '';
-    mark.style.minWidth     = '36px';
-    mark.style.maxWidth     = '120px';
-    mark.style.height       = '36px';
+    mark.style.height = ''; mark.style.minWidth = ''; mark.style.maxWidth = '';
+    mark.classList.remove('has-logo');
     mark.innerHTML = '🔧';
   }
 }
