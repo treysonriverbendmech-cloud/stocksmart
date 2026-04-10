@@ -315,8 +315,12 @@
       .header-desktop-btns { display: none !important; }
       .hamburger { display: flex; }
       .btn-mobile-add { display: none !important; }
-      .logo-mark { max-width: 80px !important; height: 32px !important; }
-      .logo-mark img { height: 32px !important; max-width: 80px !important; }
+      .logo-mark { max-width: 85px !important; height: 27px !important; }
+      .logo-mark img { height: 27px !important; max-width: 85px !important; }
+      .logo-text { position: absolute; left: 50%; transform: translateX(-50%); font-size: 16px; }
+      .logo-sub { display: none; }
+      .header-inner { position: relative; }
+      .header-stats { display: none !important; }
     }
     /* Floating Action Button */
     .fab { position: fixed; bottom: 24px; right: 20px; z-index: 900; display: none; flex-direction: column; align-items: flex-end; gap: 10px; }
@@ -590,15 +594,15 @@
       <svg class="ico" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
       <input class="search-input" id="searchInput" placeholder="Search name, part #, van, keywords…" oninput="applyFilters()">
     </div>
+    <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
+      <option value="">All Vans / Locations</option>
+    </select>
     <select class="filter-sel" id="catFilter" onchange="onCatFilterChange()">
       <option value="">All Categories</option>
       <option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>General</option>
     </select>
     <select class="filter-sel" id="subcatFilter" onchange="applyFilters()">
       <option value="">All Subcategories</option>
-    </select>
-    <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
-      <option value="">All Locations</option>
     </select>
     <div class="view-pills">
       <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
