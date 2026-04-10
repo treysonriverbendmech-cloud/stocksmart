@@ -972,6 +972,14 @@
           <span id="receiptScanTxt">✦ Scan with AI</span>
         </button>
       </div>
+      <!-- Location selector -->
+      <div style="margin-top:12px">
+        <label class="flabel">Add to Location</label>
+        <select id="receiptLocationSel" class="finput" style="margin-bottom:0">
+          <option value="">— No location —</option>
+        </select>
+      </div>
+
       <div id="receiptResults" class="hidden" style="margin-top:16px">
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Review items below. Uncheck any you don't want to add. <span style="color:var(--amber)">⚠ items</span> may already exist in inventory.</p>
         <div id="receiptItemList"></div>
@@ -2382,6 +2390,16 @@ window.openReceipt = function() {
   document.getElementById('receiptScanBtn').disabled=true;
   document.getElementById('receiptScanTxt').textContent='✦ Scan with AI';
   document.getElementById('receiptResults').classList.add('hidden');
+
+  // Populate location dropdown
+  const sel = document.getElementById('receiptLocationSel');
+  sel.innerHTML = '<option value="">— No location —</option>' +
+    boxes.map(b => `<option value="${b.id}" data-name="${xss(b.name)}">${xss(b.name)}</option>`).join('');
+  // Auto-select user's assigned van if they have one
+  if (currentUserData?.locationId) {
+    sel.value = currentUserData.locationId;
+  }
+
   showModal('receiptModal');
 };
 
@@ -2467,8 +2485,9 @@ function renderReceiptItems() {
           <div style="color:var(--accent);font-weight:600;margin-bottom:4px">🔗 ${matchTypeLabel} → ${xss(item._dup.name)}</div>
           <div style="color:var(--text-muted)">Current stock: ${item._dup.quantity||0} · ${xss(item._dup.boxName||'No location')}</div>
           <div style="display:flex;gap:6px;margin-top:6px">
-            <button class="btn btn-primary btn-sm" style="flex:2;font-size:12px" onclick="receiptDeductExisting(${item._id})">− Deduct from inventory</button>
-            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:12px" onclick="receiptAddNew(${item._id})">+ Add new</button>
+            <button class="btn btn-primary btn-sm" style="flex:1;font-size:11px" onclick="receiptAddToStock(${item._id})">↑ Add to Stock</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="receiptDeductExisting(${item._id})">− Deduct</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="receiptAddNew(${item._id})">+ New</button>
           </div>
         </div>` : ''}
       </div>
@@ -2479,6 +2498,30 @@ function renderReceiptItems() {
 window.toggleReceiptItem = function(id) {
   const item = receiptItems.find(i=>i._id===id);
   if (item) item._checked = !item._checked;
+};
+
+// Add scanned qty to the matched existing inventory part (restocking)
+window.receiptAddToStock = async function(id) {
+  const item = receiptItems.find(i=>i._id===id);
+  if (!item || !item._dup) return;
+  const part = parts.find(p=>p.id===item._dup.id);
+  if (!part) { toast('Part not found','err'); return; }
+  const qty = parseInt(item.quantity)||1;
+  const newQty = (parseInt(part.quantity)||0) + qty;
+  try {
+    await updateDoc(coDoc('parts',part.id), { quantity: newQty, updatedAt: serverTimestamp() });
+    await addDoc(co('transactions'), {
+      partId: part.id, partName: part.name, partNumber: part.partNumber||'',
+      type: 'add', quantity: qty,
+      pulledBy: currentUser?.displayName || currentUser?.email || 'Receipt scan',
+      jobRef: 'Receipt scan restock', locationId: part.boxId||null, locationName: part.boxName||null,
+      createdAt: serverTimestamp()
+    });
+    toast(`Added ${qty} × ${part.name} — now ${newQty} in stock`, 'ok');
+    receiptItems = receiptItems.filter(i=>i._id!==id);
+    renderReceiptItems();
+    if (!receiptItems.length) closeModal('receiptModal');
+  } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
 // Deduct from the matched existing inventory part (instead of adding new)
@@ -2514,8 +2557,16 @@ window.receiptAddNew = function(id) {
 };
 
 window.confirmReceiptAdd = async function() {
-  const toAdd = receiptItems.filter(i=>i._checked);
-  if (!toAdd.length) { toast('No items checked','err'); return; }
+  const toAdd = receiptItems.filter(i=>i._checked && !i._dup);
+  if (!toAdd.length) { toast('No new items to add — use the buttons on matched items','err'); return; }
+
+  // Get selected location
+  const sel = document.getElementById('receiptLocationSel');
+  const boxId   = sel.value || null;
+  const boxName = boxId ? (sel.options[sel.selectedIndex]?.dataset?.name || null) : null;
+  const box     = boxes.find(b=>b.id===boxId);
+  const boxNumber = box?.number || null;
+
   let added=0;
   for (const item of toAdd) {
     try {
@@ -2527,8 +2578,8 @@ window.confirmReceiptAdd = async function() {
         price: +(item.price||0),
         quantity: +(item.quantity||1),
         minQuantity: 0, keywords: item.keywords||[],
-        notes: item.notes||'Added via receipt scan',
-        boxId:null, boxName:null, boxNumber:null, photo:null,
+        notes: item.description || item.notes || 'Added via receipt scan',
+        boxId, boxName, boxNumber, photo:null,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
         source:'receipt'
       };

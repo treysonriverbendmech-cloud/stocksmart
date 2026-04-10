@@ -24,11 +24,13 @@ exports.handler = async (event) => {
 Extract every line item from this receipt and return ONLY a JSON object, no markdown, no code blocks.
 
 Use exactly this structure:
-{"items":[{"partNumber":"HC21ZE121","name":"Carrier Capacitor 45/5 MFD","quantity":2,"price":12.50,"category":"HVAC","subcategory":"Motors & Compressors","keywords":["capacitor","carrier","45/5"]},{"partNumber":"","name":"1/2 Copper Fitting","quantity":10,"price":1.25,"category":"Plumbing","subcategory":"Pipes & Fittings","keywords":["copper","fitting"]}]}
+{"items":[{"partNumber":"HC21ZE121","name":"Carrier Capacitor 45/5 MFD","description":"Dual run capacitor 45/5 MFD 370V oval, fits Carrier and Bryant units","quantity":2,"price":12.50,"category":"HVAC","subcategory":"Motors & Compressors","keywords":["capacitor","carrier","45/5","dual run","370v"]},{"partNumber":"","name":"1/2 Copper Fitting","description":"1/2 inch copper sweat elbow 90 degree","quantity":10,"price":1.25,"category":"Plumbing","subcategory":"Pipes & Fittings","keywords":["copper","fitting","elbow","1/2"]}]}
 
 Rules:
 - Extract the part number exactly as printed (it may be labeled SKU, Item#, Part#, Model, etc.)
 - If no part number is visible for a line, leave partNumber as empty string ""
+- name: full descriptive name including brand, size, rating, and model if visible on receipt
+- description: expand the name with ALL additional detail visible on the receipt line — voltage ratings, dimensions, compatibility, material, color, etc. If nothing extra is available, repeat the name.
 - quantity: number of units on that line
 - price: unit price (not extended/total price)
 - category must be one of: HVAC, Plumbing, Electrical, General
@@ -36,7 +38,7 @@ Rules:
 - Plumbing subcategories: Pipes & Fittings, Rigging Material, Sealants & Adhesives, Rigging & Strapping, Other
 - Electrical subcategories: Wire / Cables, Conduit & Fittings, Straps & Hanging, Breakers & Panels, Electrical Devices, Junction Boxes, Other
 - General subcategories: Fasteners & Hardware, Safety Equipment, Consumables, Job Supplies, Other
-- keywords: 2-4 search terms for each item
+- keywords: 3-6 search terms including brand, size, model number, and material
 - Skip tax lines, shipping lines, totals, and header rows — only include actual parts/items
 - If the image is not a receipt or no items are visible, return {"items":[]}`;
 
