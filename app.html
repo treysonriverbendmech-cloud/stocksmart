@@ -867,6 +867,18 @@
         </div>
         <input type="file" id="brandLogoIn" accept="image/*" style="display:none" onchange="onBrandLogoFile(event)">
       </div>
+      <div class="fgroup" style="margin-bottom:16px">
+        <label class="flabel" style="display:flex;justify-content:space-between">
+          <span>Logo Size</span>
+          <span id="logoSizeLabel" style="color:var(--accent);font-weight:700">Medium</span>
+        </label>
+        <input type="range" id="logoSizeSlider" min="24" max="56" step="2" value="34"
+          style="width:100%;accent-color:var(--purple);cursor:pointer;margin-top:4px"
+          oninput="previewLogoSize(this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:2px">
+          <span>Small</span><span>Medium</span><span>Large</span>
+        </div>
+      </div>
       <button class="btn btn-primary btn-full" onclick="saveBranding()" style="margin-top:8px">Save Branding</button>
     </div>
     <!-- Integrations / HCP tab -->
@@ -1600,6 +1612,7 @@ async function loadSettings() {
   settings.companyName  = '';
   settings.appSubtitle  = '';
   settings.logoUrl      = '';
+  settings.logoSize     = 34;
   settings.techs        = [];
   settings.subcategories = JSON.parse(JSON.stringify(DEFAULT_SUBS));
   try {
@@ -1614,6 +1627,7 @@ async function loadSettings() {
       if (d.companyName)  settings.companyName  = d.companyName;
       if (d.appSubtitle)  settings.appSubtitle  = d.appSubtitle;
       if (d.logoUrl)      settings.logoUrl      = d.logoUrl;
+      if (d.logoSize)     settings.logoSize     = d.logoSize;
       if (d.techs)        settings.techs        = d.techs;
     }
   } catch(e) { console.warn('Settings load failed, using defaults'); }
@@ -2338,6 +2352,7 @@ function applyBranding() {
   const name     = settings.companyName || 'Partlocker';
   const subtitle = settings.appSubtitle || 'Parts Inventory';
   const logo     = settings.logoUrl;
+  const logoSize = settings.logoSize || 34;
   document.getElementById('logoName').textContent = name;
   document.getElementById('logoSub').textContent  = subtitle;
   document.title = name;
@@ -2346,18 +2361,17 @@ function applyBranding() {
     mark.style.background   = 'transparent';
     mark.style.boxShadow    = 'none';
     mark.style.padding      = '0';
-    // Let CSS handle all sizing — clear any previous inline overrides
-    mark.style.height = ''; mark.style.minWidth = ''; mark.style.maxWidth = '';
     mark.classList.add('has-logo');
     mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;
   } else {
     mark.style.background   = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
     mark.style.boxShadow    = '0 0 0 1px rgba(99,102,241,0.4)';
     mark.style.padding      = '';
-    mark.style.height = ''; mark.style.minWidth = ''; mark.style.maxWidth = '';
     mark.classList.remove('has-logo');
     mark.innerHTML = '🔧';
   }
+  // Apply saved logo size (overrides CSS defaults)
+  applyLogoSize(logoSize);
 }
 
 let pendingLogoData = null;
@@ -2371,6 +2385,33 @@ function loadBrandingForm() {
     prev.innerHTML = `<img src="${settings.logoUrl}" style="max-height:76px;max-width:100%;object-fit:contain">`;
   } else {
     prev.innerHTML = `<span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>`;
+  }
+  // Restore slider to saved size
+  const saved = settings.logoSize || 34;
+  document.getElementById('logoSizeSlider').value = saved;
+  updateLogoSizeLabel(saved);
+}
+
+window.previewLogoSize = function(val) {
+  updateLogoSizeLabel(val);
+  applyLogoSize(Number(val));
+};
+
+function updateLogoSizeLabel(val) {
+  val = Number(val);
+  const label = val <= 28 ? 'Small' : val <= 38 ? 'Medium' : val <= 46 ? 'Large' : 'XL';
+  document.getElementById('logoSizeLabel').textContent = label + ' (' + val + 'px)';
+}
+
+function applyLogoSize(px) {
+  const mark = document.getElementById('logoMark');
+  if (!mark) return;
+  // Apply directly as inline style so it works on all screen sizes
+  mark.style.height = px + 'px';
+  if (mark.classList.contains('has-logo')) {
+    // Keep aspect ratio — max-width scales proportionally (assume logo is ~3:1 wide)
+    mark.style.maxWidth = Math.round(px * 3.5) + 'px';
+    mark.style.minWidth = 'unset';
   }
 }
 
@@ -2393,15 +2434,17 @@ window.clearBrandLogo = function() {
 window.saveBranding = async function() {
   const companyName = document.getElementById('sBrandName').value.trim();
   const appSubtitle = document.getElementById('sBrandSub').value.trim();
-  const logoUrl = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
+  const logoUrl  = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
+  const logoSize = Number(document.getElementById('logoSizeSlider').value);
   try {
     await setDoc(coDoc('settings','app'), {
       subcategories: settings.subcategories,
-      companyName, appSubtitle, logoUrl
+      companyName, appSubtitle, logoUrl, logoSize
     });
     settings.companyName = companyName;
     settings.appSubtitle = appSubtitle;
     settings.logoUrl     = logoUrl;
+    settings.logoSize    = logoSize;
     applyBranding();
     toast('Branding saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
