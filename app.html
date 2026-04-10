@@ -87,6 +87,7 @@
 
     /* ── Toolbar ── */
     .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .toolbar-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .search-wrap { flex: 1; min-width: 180px; position: relative; }
     .search-wrap .ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
     .search-input {
@@ -312,15 +313,24 @@
     .nav-item.nav-primary { color: var(--accent); }
     .nav-divider { height: 1px; background: var(--border); margin: 4px 0; }
     @media (max-width: 640px) {
+      .header-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+      .logo { gap: 6px; }
+      .logo-mark { max-width: 80px !important; height: 22px !important; min-width: unset !important; border-radius: 5px !important; }
+      .logo-mark img { height: 22px !important; max-width: 80px !important; border-radius: 5px !important; }
+      .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      .logo-text { font-size: 15px !important; }
+      .logo-sub { font-size: 9px !important; letter-spacing: 0.06em; }
+      .header-stats { display: none !important; }
       .header-desktop-btns { display: none !important; }
       .hamburger { display: flex; }
-      .btn-mobile-add { display: none !important; }
-      .logo-mark { max-width: 85px !important; height: 27px !important; }
-      .logo-mark img { height: 27px !important; max-width: 85px !important; }
-      .logo-text { position: absolute; left: 50%; transform: translateX(-50%); font-size: 16px; }
-      .logo-sub { display: none; }
-      .header-inner { position: relative; }
-      .header-stats { display: none !important; }
+      .logo-text-wrap { display: none !important; }
+      .header-center { display: flex !important; }
+      .btn-mobile-only { display: flex !important; }
+      .toolbar { flex-wrap: wrap; gap: 6px; }
+      .search-wrap { width: 100%; min-width: unset; flex: unset; }
+      .toolbar-filters { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+      .toolbar-filters::-webkit-scrollbar { display: none; }
+      .filter-sel { min-width: 130px; flex-shrink: 0; }
     }
     /* Floating Action Button */
     .fab { position: fixed; bottom: 24px; right: 20px; z-index: 900; display: none; flex-direction: column; align-items: flex-end; gap: 10px; }
@@ -523,13 +533,19 @@
 <!-- ═══════ HEADER ═══════ -->
 <header class="header">
   <div class="header-inner">
+    <!-- Left: logo mark only on mobile -->
     <a class="logo" href="#">
       <div class="logo-mark" id="logoMark">🔧</div>
-      <div>
+      <div class="logo-text-wrap" style="display:flex;flex-direction:column">
         <div class="logo-text" id="logoName">Partlocker</div>
         <div class="logo-sub" id="logoSub">Parts Inventory</div>
       </div>
     </a>
+    <!-- Center: app name (mobile only) -->
+    <div class="header-center" style="display:none">
+      <div style="font-size:15px;font-weight:800;color:var(--text);letter-spacing:-0.3px">Partlocker</div>
+      <div style="font-size:9px;font-weight:500;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase">Inventory Tracker</div>
+    </div>
     <div class="header-stats">
       <div class="hstat"><strong id="statParts">0</strong>Parts</div>
       <div class="hstat"><strong id="statValue">$0</strong>Value</div>
@@ -552,10 +568,16 @@
           Add Part
         </button>
       </div>
-      <!-- Mobile hamburger -->
-      <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
-        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
+      <!-- Mobile: Add Part button + hamburger -->
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-primary btn-mobile-only" onclick="openAdd()" style="display:none;padding:7px 12px;font-size:13px;font-weight:700">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Add
+        </button>
+        <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Menu">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 </header>
@@ -592,25 +614,27 @@
   <div class="toolbar">
     <div class="search-wrap">
       <svg class="ico" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
-      <input class="search-input" id="searchInput" placeholder="Search name, part #, van, keywords…" oninput="applyFilters()">
+      <input class="search-input" id="searchInput" placeholder="Search name, part #, box #, van…" oninput="applyFilters()">
     </div>
-    <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
-      <option value="">All Vans / Locations</option>
-    </select>
-    <select class="filter-sel" id="catFilter" onchange="onCatFilterChange()">
-      <option value="">All Categories</option>
-      <option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>General</option>
-    </select>
-    <select class="filter-sel" id="subcatFilter" onchange="applyFilters()">
-      <option value="">All Subcategories</option>
-    </select>
-    <div class="view-pills">
-      <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
-        <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      </button>
-      <button class="vpill" id="vList" onclick="setView('list')" title="List">
-        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
+    <div class="toolbar-filters">
+      <select class="filter-sel" id="boxFilter" onchange="applyFilters()">
+        <option value="">All Vans / Locations</option>
+      </select>
+      <select class="filter-sel" id="catFilter" onchange="onCatFilterChange()">
+        <option value="">All Categories</option>
+        <option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>General</option>
+      </select>
+      <select class="filter-sel" id="subcatFilter" onchange="applyFilters()">
+        <option value="">All Subcategories</option>
+      </select>
+      <div class="view-pills">
+        <button class="vpill active" id="vGrid" onclick="setView('grid')" title="Grid">
+          <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+        <button class="vpill" id="vList" onclick="setView('list')" title="List">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
     </div>
   </div>
   <div class="grid" id="grid"></div>
