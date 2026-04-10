@@ -1776,6 +1776,9 @@ window.applyFilters = function() {
     if (_aiActive && _aiKeywords.length) {
       return _aiKeywords.some(k => txt.includes(k.toLowerCase()) || txtNorm.includes(norm(k)));
     }
+    // AI active but no keyword matched anything — show all parts in the filtered category
+    // so the tech always sees something rather than a blank screen
+    if (_aiActive) return true;
 
     // Plain search: AND logic — every typed word must match (existing behaviour)
     if (!raw) return true;
@@ -1898,8 +1901,8 @@ window.onSearchInput = function() {
     document.getElementById('searchIco').style.display = 'none';
     document.getElementById('searchAiIco').style.display = 'inline';
     document.getElementById('searchAiIco').textContent = '✨';
-    // Fire AI after user pauses typing
-    _aiSearchTimer = setTimeout(() => runAiSearch(raw), 500);
+    // Fire AI after user pauses typing — 1.5s gives voice-to-text time to settle
+    _aiSearchTimer = setTimeout(() => runAiSearch(raw), 1500);
   } else {
     resetSearchIcons();
   }
@@ -1923,20 +1926,20 @@ async function runAiSearch(query) {
     if (!res.ok) throw new Error('Search failed: ' + res.status);
     const data = await res.json();
 
-    _aiActive = true;
-
-    // Apply category filter
+    // Set category quietly — rebuild subcategory options WITHOUT calling applyFilters yet
     if (data.category) {
       document.getElementById('catFilter').value = data.category;
-      onCatFilterChange(); // populates subcategory options
+      const subSel = document.getElementById('subcatFilter');
+      subSel.innerHTML = '<option value="">All Subcategories</option>';
+      const subs = settings.subcategories[data.category] || [];
+      subs.forEach(s => { const o = document.createElement('option'); o.value = o.textContent = s; subSel.appendChild(o); });
     }
-    // Apply subcategory (needs a tick for options to render)
     if (data.subcategory) {
-      await new Promise(r => setTimeout(r, 30));
       document.getElementById('subcatFilter').value = data.subcategory;
     }
 
-    // Put AI keywords into search box and run filters
+    // NOW set active state and keywords, then fire filters once — clean single render
+    _aiActive = true;
     applyFiltersWithAiKeywords(data.keywords);
 
     // Show result banner
