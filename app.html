@@ -43,14 +43,15 @@
     }
     .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; user-select: none; }
     .logo-mark {
-      height: 38px; min-width: 36px; max-width: 40px;
+      height: 36px; min-width: 36px; max-width: 40px; box-sizing: border-box;
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border-radius: 9px; display: flex; align-items: center; justify-content: center;
       font-size: 17px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(99,102,241,0.4);
-      overflow: hidden; transition: max-width 0.2s;
+      overflow: hidden;
     }
-    .logo-mark.has-logo { max-width: 140px; border-radius: 8px; }
-    .logo-mark img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: inherit; }
+    /* padding pushes image away from corners — no clipping of logo text */
+    .logo-mark.has-logo { max-width: 140px; border-radius: 8px; padding: 4px; background: transparent; box-shadow: none; }
+    .logo-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .logo-text { font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
     .logo-sub { font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
     .header-stats { display: flex; gap: 16px; margin-left: 4px; }
@@ -316,8 +317,7 @@
     @media (max-width: 640px) {
       .header-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 52px; overflow: hidden; }
       .logo { gap: 6px; overflow: hidden; }
-      .logo-mark { height: 44px !important; max-width: 44px !important; min-width: 44px !important; border-radius: 8px !important; }
-      .logo-mark.has-logo { max-width: 120px !important; min-width: unset !important; }
+      /* logo-mark sizing handled entirely by applyLogoSize() in JS — no CSS overrides here */
       .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .logo-text { font-size: 15px !important; }
       .logo-sub { font-size: 9px !important; letter-spacing: 0.06em; }
@@ -872,7 +872,7 @@
           <span>Logo Size</span>
           <span id="logoSizeLabel" style="color:var(--accent);font-weight:700">Medium</span>
         </label>
-        <input type="range" id="logoSizeSlider" min="24" max="56" step="2" value="44"
+        <input type="range" id="logoSizeSlider" min="24" max="56" step="2" value="36"
           style="width:100%;accent-color:var(--purple);cursor:pointer;margin-top:4px"
           oninput="previewLogoSize(this.value)">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:2px">
@@ -1612,7 +1612,7 @@ async function loadSettings() {
   settings.companyName  = '';
   settings.appSubtitle  = '';
   settings.logoUrl      = '';
-  settings.logoSize     = 44;
+  settings.logoSize     = 36;
   settings.techs        = [];
   settings.subcategories = JSON.parse(JSON.stringify(DEFAULT_SUBS));
   try {
@@ -2352,25 +2352,24 @@ function applyBranding() {
   const name     = settings.companyName || 'Partlocker';
   const subtitle = settings.appSubtitle || 'Parts Inventory';
   const logo     = settings.logoUrl;
-  const logoSize = settings.logoSize || 44;
+  const logoSize = settings.logoSize || 36;
   document.getElementById('logoName').textContent = name;
   document.getElementById('logoSub').textContent  = subtitle;
   document.title = name;
   const mark = document.getElementById('logoMark');
   if (logo) {
-    mark.style.background   = 'transparent';
-    mark.style.boxShadow    = 'none';
-    mark.style.padding      = '0';
+    // Visual only — sizing handled entirely by applyLogoSize()
+    mark.style.background = 'transparent';
+    mark.style.boxShadow  = 'none';
     mark.classList.add('has-logo');
-    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;
+    mark.innerHTML = `<img src="${logo}" alt="${xss(name)}" style="width:100%;height:100%;object-fit:contain">`;
   } else {
-    mark.style.background   = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-    mark.style.boxShadow    = '0 0 0 1px rgba(99,102,241,0.4)';
-    mark.style.padding      = '';
+    mark.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+    mark.style.boxShadow  = '0 0 0 1px rgba(99,102,241,0.4)';
     mark.classList.remove('has-logo');
     mark.innerHTML = '🔧';
   }
-  // Apply saved logo size (overrides CSS defaults)
+  // Single source of truth for size — JS wins, CSS is just the fallback before load
   applyLogoSize(logoSize);
 }
 
@@ -2387,7 +2386,7 @@ function loadBrandingForm() {
     prev.innerHTML = `<span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>`;
   }
   // Restore slider to saved size
-  const saved = settings.logoSize || 44;
+  const saved = settings.logoSize || 36;
   document.getElementById('logoSizeSlider').value = saved;
   updateLogoSizeLabel(saved);
 }
@@ -2406,12 +2405,15 @@ function updateLogoSizeLabel(val) {
 function applyLogoSize(px) {
   const mark = document.getElementById('logoMark');
   if (!mark) return;
-  // Apply directly as inline style so it works on all screen sizes
   mark.style.height = px + 'px';
   if (mark.classList.contains('has-logo')) {
-    // Keep aspect ratio — max-width scales proportionally (assume logo is ~3:1 wide)
+    // Wide enough to show horizontal logos; padding (set in CSS) keeps image off the corners
     mark.style.maxWidth = Math.round(px * 3.5) + 'px';
     mark.style.minWidth = 'unset';
+  } else {
+    // Emoji: stay square
+    mark.style.maxWidth = px + 'px';
+    mark.style.minWidth = px + 'px';
   }
 }
 
