@@ -316,8 +316,8 @@
     @media (max-width: 640px) {
       .header-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 52px; overflow: hidden; }
       .logo { gap: 6px; overflow: hidden; }
-      .logo-mark { height: 34px !important; max-width: 38px !important; min-width: 34px !important; border-radius: 7px !important; }
-      .logo-mark.has-logo { max-width: 90px !important; min-width: unset !important; }
+      .logo-mark { height: 44px !important; max-width: 44px !important; min-width: 44px !important; border-radius: 8px !important; }
+      .logo-mark.has-logo { max-width: 120px !important; min-width: unset !important; }
       .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .logo-text { font-size: 15px !important; }
       .logo-sub { font-size: 9px !important; letter-spacing: 0.06em; }
@@ -872,7 +872,7 @@
           <span>Logo Size</span>
           <span id="logoSizeLabel" style="color:var(--accent);font-weight:700">Medium</span>
         </label>
-        <input type="range" id="logoSizeSlider" min="24" max="56" step="2" value="34"
+        <input type="range" id="logoSizeSlider" min="24" max="56" step="2" value="44"
           style="width:100%;accent-color:var(--purple);cursor:pointer;margin-top:4px"
           oninput="previewLogoSize(this.value)">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:2px">
@@ -1612,7 +1612,7 @@ async function loadSettings() {
   settings.companyName  = '';
   settings.appSubtitle  = '';
   settings.logoUrl      = '';
-  settings.logoSize     = 34;
+  settings.logoSize     = 44;
   settings.techs        = [];
   settings.subcategories = JSON.parse(JSON.stringify(DEFAULT_SUBS));
   try {
@@ -2352,7 +2352,7 @@ function applyBranding() {
   const name     = settings.companyName || 'Partlocker';
   const subtitle = settings.appSubtitle || 'Parts Inventory';
   const logo     = settings.logoUrl;
-  const logoSize = settings.logoSize || 34;
+  const logoSize = settings.logoSize || 44;
   document.getElementById('logoName').textContent = name;
   document.getElementById('logoSub').textContent  = subtitle;
   document.title = name;
@@ -2387,7 +2387,7 @@ function loadBrandingForm() {
     prev.innerHTML = `<span style="color:var(--text-muted);font-size:13px">No logo uploaded</span>`;
   }
   // Restore slider to saved size
-  const saved = settings.logoSize || 34;
+  const saved = settings.logoSize || 44;
   document.getElementById('logoSizeSlider').value = saved;
   updateLogoSizeLabel(saved);
 }
