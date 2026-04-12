@@ -1,5 +1,5 @@
 // Partlocker Service Worker
-const CACHE_NAME = 'partlocker-v2';
+const CACHE_NAME = 'partlocker-v3';
 
 // App shell resources to cache
 const SHELL = [
