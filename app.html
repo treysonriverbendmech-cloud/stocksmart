@@ -1012,7 +1012,7 @@
     <div style="padding:0 20px 8px">
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">These items appeared on HCP jobs but couldn't be matched to your inventory. Use <strong>AI Suggest</strong> to find the best match, then approve or skip.</p>
       <div id="unmatchedEmpty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted)">✅ All items reconciled!</div>
-      <div id="unmatchedList" style="display:flex;flex-direction:column;gap:12px"></div>
+      <div id="unmatchedList" style="display:flex;flex-direction:column;gap:12px;max-height:65vh;overflow-y:auto"></div>
     </div>
   </div>
 </div>
@@ -3522,12 +3522,13 @@ window.runHCPSync = async function() {
     const debugNote = [
       debugInfo.totalPages ? `Pages: ${debugInfo.totalPages} · Jobs on p1: ${debugInfo.jobsOnPage1}` : '',
     ].filter(Boolean).map(t=>`<br><span style="font-size:11px;color:var(--text-muted)">${xss(t)}</span>`).join('');
+    // Link opens the proper unmatched modal (not an inline toggle — that had an ID conflict with the modal's list)
     const unmatchedNote = unmatched.length > 0
-      ? ` · <a href="#" onclick="event.preventDefault();document.getElementById('unmatchedList').classList.toggle('hidden')" style="color:var(--amber);text-decoration:underline">${unmatched.length} unmatched items</a>`
+      ? ` · <a href="#" onclick="event.preventDefault();openUnmatched()" style="color:var(--amber);text-decoration:underline">${unmatched.length} unmatched items</a>`
       : '';
 
     const unmatchedRows = unmatched.length > 0
-      ? `<div id="unmatchedList" class="hidden" style="margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
+      ? `<div id="hcpSyncUnmatchedInline" class="hidden" style="margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
           <div style="padding:8px 12px;background:var(--surface3);font-size:11px;font-weight:700;color:var(--amber);letter-spacing:0.05em">UNMATCHED ITEMS — not in your inventory</div>
           ${unmatched.map(u=>`
             <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;gap:8px">
@@ -4035,7 +4036,15 @@ function populateUsageTechFilter() {
   const sel=document.getElementById('usageTechFilter');
   const cur=sel.value;
   sel.innerHTML='<option value="">All Techs</option>';
-  settings.techs.forEach(t=>{
+  // Build list from actual transaction data so HCP-synced names always appear,
+  // then merge in settings.techs for manually configured names. Deduplicate.
+  const txnTechs = [...new Set(
+    transactions
+      .filter(t => t.pulledBy && t.pulledBy !== 'Unknown')
+      .map(t => t.pulledBy)
+  )];
+  const allTechs = [...new Set([...txnTechs, ...settings.techs])].sort();
+  allTechs.forEach(t=>{
     const o=document.createElement('option'); o.value=o.textContent=t;
     if(t===cur) o.selected=true;
     sel.appendChild(o);
