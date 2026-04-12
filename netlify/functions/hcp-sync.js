@@ -67,6 +67,17 @@ exports.handler = async (event) => {
         debugInfo.rawMeta = JSON.stringify(meta).substring(0, 300);
         debugInfo.rawDataKeys = JSON.stringify(Object.keys(data)).substring(0, 200);
         debugInfo.jobsOnPage1 = jobs.length;
+        // Always capture the first job's raw structure regardless of date filter
+        // This lets us see field names even when all jobs are "already processed"
+        const anyJob = jobs[0];
+        if (anyJob) {
+          debugInfo.rawJobKeys  = JSON.stringify(Object.keys(anyJob)).substring(0, 500);
+          debugInfo.rawJobSample = JSON.stringify(anyJob).substring(0, 1200);
+          debugInfo.resolvedJobNum = anyJob.job_number ?? anyJob.number ?? anyJob.custom_job_number ?? anyJob.invoice_number ?? '(none)';
+          debugInfo.resolvedTech = anyJob.schedule?.dispatched_employees
+            ? JSON.stringify(anyJob.schedule.dispatched_employees).substring(0, 300)
+            : (anyJob.assigned_employees ? JSON.stringify(anyJob.assigned_employees).substring(0, 300) : '(no emp field on list endpoint)');
+        }
       }
 
       // Keep only completed jobs updated since our cutoff
