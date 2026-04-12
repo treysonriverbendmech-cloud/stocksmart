@@ -1201,7 +1201,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
-  doc, getDoc, onSnapshot, query, orderBy, where, serverTimestamp, limit
+  doc, getDoc, onSnapshot, query, orderBy, where, serverTimestamp, limit, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
@@ -1492,30 +1492,51 @@ async function loadTeamUsers() {
   } catch(e) { console.warn('loadTeamUsers:', e.message); }
 }
 
+// ─── Admin guard — call at the top of any admin-only function ─────────────────
+function requireAdmin(label = 'This action') {
+  if (!currentUserData || currentUserData.role !== 'admin') {
+    toast(`${label} is restricted to admins`, 'err');
+    return false;
+  }
+  return true;
+}
+
 window.approveUser = async function(uid) {
-  await updateDoc(coDoc('users',uid), { status:'approved' });
-  await updateDoc(doc(db,'companyRegistry',uid), { status:'approved' });
-  toast('User approved!','ok');
-  loadTeamUsers();
+  if (!requireAdmin('Approving users')) return;
+  try {
+    await updateDoc(coDoc('users',uid), { status:'approved' });
+    await updateDoc(doc(db,'companyRegistry',uid), { status:'approved' });
+    toast('User approved!','ok');
+    loadTeamUsers();
+  } catch(e) { toast('Failed to approve user: '+e.message,'err'); }
 };
 
 window.denyUser = async function(uid) {
+  if (!requireAdmin('Denying users')) return;
   if (!confirm('Deny and remove this user?')) return;
-  await updateDoc(coDoc('users',uid), { status:'denied' });
-  loadTeamUsers();
+  try {
+    await updateDoc(coDoc('users',uid), { status:'denied' });
+    loadTeamUsers();
+  } catch(e) { toast('Failed to deny user: '+e.message,'err'); }
 };
 
 window.removeUser = async function(uid) {
+  if (!requireAdmin('Removing users')) return;
   if (!confirm('Remove this user\'s access?')) return;
-  await updateDoc(coDoc('users',uid), { status:'denied' });
-  await deleteDoc(doc(db,'companyRegistry',uid));
-  toast('User removed','ok');
-  loadTeamUsers();
+  try {
+    await updateDoc(coDoc('users',uid), { status:'denied' });
+    await deleteDoc(doc(db,'companyRegistry',uid));
+    toast('User removed','ok');
+    loadTeamUsers();
+  } catch(e) { toast('Failed to remove user: '+e.message,'err'); }
 };
 
 window.saveUserLocation = async function(uid, locationId) {
-  await updateDoc(coDoc('users',uid), { locationId });
-  toast('Location mapped','ok');
+  if (!requireAdmin('Mapping locations')) return;
+  try {
+    await updateDoc(coDoc('users',uid), { locationId });
+    toast('Location mapped','ok');
+  } catch(e) { toast('Failed to save location: '+e.message,'err'); }
 };
 
 // ─── Admin UID — only this user can approve others ───────────────────────────
@@ -2232,14 +2253,14 @@ window.saveItem = async function() {
   if (!boxId) { toast('Location is required','err'); document.getElementById('fBoxSel').focus(); return; }
   const box = boxes.find(b=>b.id===boxId);
   const boxNumber = document.getElementById('fBoxNum').value.trim();
-  const cylSize = parseInt(document.getElementById('fCylSize').value)||0;
+  const cylSize = Math.max(0, parseInt(document.getElementById('fCylSize').value)||0);
   const data = {
     name,
     category:      document.getElementById('fCat'    ).value,
     subcategory:   document.getElementById('fSubcat' ).value,
-    price:         parseFloat(document.getElementById('fPrice').value)||0,
-    quantity:      parseInt(  document.getElementById('fQty'  ).value)||0,
-    minQuantity:   parseInt(  document.getElementById('fMinQty').value)||0,
+    price:         Math.max(0, parseFloat(document.getElementById('fPrice').value)||0),
+    quantity:      Math.max(0, parseInt(  document.getElementById('fQty'  ).value)||0),
+    minQuantity:   Math.max(0, parseInt(  document.getElementById('fMinQty').value)||0),
     keywords:      kw,
     boxId:         boxId || null,
     boxName:       box ? box.name : null,
@@ -2415,16 +2436,26 @@ window.stepQty = function(delta) {
 };
 window.confirmQty = async function() {
   if (!qtyContext) return;
-  const { partId, type, currentQty, trackUnit: pUnit } = qtyContext;
+  const { partId, type, trackUnit: pUnit } = qtyContext;
   const p = parts.find(i=>i.id===partId); if(!p) return;
+
+  const partRef = coDoc('parts', partId);
+
   // Enforce pulled-by for use transactions
   if (type==='use') {
     const pulledBy = document.getElementById('qtyPulledBy').value.trim();
     if (!pulledBy) { toast('Enter who is pulling this part','err'); document.getElementById('qtyPulledBy').focus(); return; }
     const jobRef = document.getElementById('qtyJobRef').value.trim();
-    const newQty = Math.max(0, currentQty - qtyDelta);
     try {
-      await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      // Use a Firestore transaction so concurrent techs can't overwrite each other's qty change
+      let finalQty;
+      await runTransaction(db, async txn => {
+        const snap = await txn.get(partRef);
+        if (!snap.exists()) throw new Error('Part no longer exists');
+        const liveQty = snap.data().quantity || 0;
+        finalQty = Math.max(0, liveQty - qtyDelta);
+        txn.update(partRef, { quantity: finalQty, updatedAt: serverTimestamp() });
+      });
       await addDoc(co('transactions'), {
         partId, partName: p.name, partNumber: p.partNumber||'',
         type:'use', quantity: qtyDelta, pulledBy, jobRef: jobRef||null,
@@ -2432,19 +2463,26 @@ window.confirmQty = async function() {
         createdAt: serverTimestamp()
       });
       const uLbl = pUnit ? ` ${pUnit}` : '';
-      toast(`Pulled ${qtyDelta}${uLbl} by ${pulledBy} — ${newQty}${uLbl} remaining`,'ok');
+      toast(`Pulled ${qtyDelta}${uLbl} by ${pulledBy} — ${finalQty}${uLbl} remaining`,'ok');
       closeModal('qtyModal');
     } catch(err) { toast('Update failed: '+err.message,'err'); }
   } else {
-    const newQty = currentQty + qtyDelta;
     try {
-      await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+      // Use a Firestore transaction to safely increment quantity
+      let finalQty;
+      await runTransaction(db, async txn => {
+        const snap = await txn.get(partRef);
+        if (!snap.exists()) throw new Error('Part no longer exists');
+        const liveQty = snap.data().quantity || 0;
+        finalQty = liveQty + qtyDelta;
+        txn.update(partRef, { quantity: finalQty, updatedAt: serverTimestamp() });
+      });
       await addDoc(co('transactions'), {
         partId, partName: p.name, partNumber: p.partNumber||'',
         type:'restock', quantity: qtyDelta, createdAt: serverTimestamp()
       });
       const uLbl2 = pUnit ? ` ${pUnit}` : '';
-      toast(`Restocked +${qtyDelta}${uLbl2} — now ${newQty}${uLbl2}`,'ok');
+      toast(`Restocked +${qtyDelta}${uLbl2} — now ${finalQty}${uLbl2}`,'ok');
       closeModal('qtyModal');
     } catch(err) { toast('Update failed: '+err.message,'err'); }
   }
@@ -2515,6 +2553,7 @@ window.resetCat = function(cat) {
 };
 
 window.saveSettings = async function() {
+  if (!requireAdmin('Changing category settings')) return;
   try {
     // Use merge:true so only subcategories field is updated, never clobbering branding/team fields
     await setDoc(coDoc('settings','app'), {
@@ -2650,6 +2689,7 @@ window.clearBrandLogo = function() {
 };
 
 window.saveBranding = async function() {
+  if (!requireAdmin('Changing branding')) return;
   const companyName = document.getElementById('sBrandName').value.trim();
   const appSubtitle = document.getElementById('sBrandSub').value.trim();
   const logoUrl  = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
@@ -2683,6 +2723,7 @@ window.copyInviteCode = function() {
 };
 
 window.regenerateInviteCode = async function() {
+  if (!requireAdmin('Regenerating invite code')) return;
   const newCode = generateId(6);
   try {
     await updateDoc(doc(db,'companies',companyId), { inviteCode: newCode });
@@ -3199,6 +3240,7 @@ window.onHCPFileDrop = function(e) {
 };
 
 window.runHCPImport = async function() {
+  if (!requireAdmin('Importing parts')) return;
   const existingUuids = new Set(parts.map(p=>p.hcpUuid).filter(Boolean));
   const toImport = hcpParsedRows.filter(r=>r.name && !existingUuids.has(r.uuid));
   if (!toImport.length) { toast('No new parts to import','err'); return; }
@@ -3290,6 +3332,7 @@ let hcpUnmatchedItems = []; // in-memory unmatched items needing reconciliation
 
 // Save/load API key in Firestore settings
 window.saveHCPApiKey = async function() {
+  if (!requireAdmin('Saving HCP API key')) return;
   const key = document.getElementById('hcpApiKeyInput').value.trim();
   if (!key) { toast('Enter your HCP API key first','err'); return; }
   try {
@@ -3319,6 +3362,7 @@ async function loadHCPMeta() {
 }
 
 window.resetHCPSyncDate = async function() {
+  if (!requireAdmin('Resetting sync date')) return;
   try {
     await setDoc(coDoc('settings','hcp'), { lastSyncAt: null }, { merge: true });
     const statusEl = document.getElementById('hcpSyncStatus');
@@ -3328,6 +3372,7 @@ window.resetHCPSyncDate = async function() {
 };
 
 window.runHCPSync = async function() {
+  if (!requireAdmin('Running HCP sync')) return;
   const btn = document.getElementById('hcpSyncBtn');
   const statusEl = document.getElementById('hcpSyncStatus');
   btn.disabled = true; btn.textContent = '🔄 Syncing…';
