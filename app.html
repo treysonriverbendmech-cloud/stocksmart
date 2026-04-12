@@ -1930,10 +1930,18 @@ function renderGrid() {
       ${parts.length===0?'<button class="btn btn-primary" onclick="openAdd()">Add First Part</button>':''}
     </div>`; return;
   }
+  // Pre-compute duplicate part numbers for badge display
+  const pnCounts = {};
+  parts.forEach(p => { if (p.partNumber) pnCounts[p.partNumber] = (pnCounts[p.partNumber]||0)+1; });
+  const normName2 = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const nameCounts = {};
+  parts.forEach(p => { if (p.name) { const k=normName2(p.name); nameCounts[k]=(nameCounts[k]||0)+1; } });
+
   grid.innerHTML = filtered.map(p => {
     const catClass = CAT_CLASS[p.category] || 'cat-general';
     const box = boxes.find(b => b.id === p.boxId);
     const isLow = p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity);
+    const isDupe = (p.partNumber && pnCounts[p.partNumber] > 1) || (p.name && nameCounts[normName2(p.name)] > 1);
     const thumb = p.photo
       ? `<img src="${p.photo}" alt="${xss(p.name)}" loading="lazy">`
       : `<div class="card-thumb-icon">🔩</div>`;
@@ -1953,6 +1961,7 @@ function renderGrid() {
             ? `<span class="meta-item">🧊 <strong>${p.quantity||0} lbs</strong>${p.cylinderSize?' / '+p.cylinderSize+' lb cyl':''}</span>`
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
+          ${isDupe?`<span class="low-stock" style="color:#f87171;background:rgba(248,113,113,.15)">⚠ Duplicate</span>`:''}
           ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
         ${kws?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${kws}</div>`:''}
@@ -2279,6 +2288,33 @@ window.saveItem = async function() {
     cylinderSize:  trackUnit === 'lbs' ? cylSize : null,
     updatedAt:     serverTimestamp(),
   };
+  // ── Duplicate safeguards ──────────────────────────────────────────────────
+  const otherParts = parts.filter(p => p.id !== editingId);
+
+  // 1. Block on exact part number match (most reliable signal)
+  const partNumInput = (document.getElementById('partNumDisplay').textContent || '').trim();
+  if (partNumInput) {
+    const pnDupe = otherParts.find(p => p.partNumber && p.partNumber.trim().toLowerCase() === partNumInput.toLowerCase());
+    if (pnDupe) {
+      toast(`Part # ${partNumInput} already exists: "${pnDupe.name}" — merge or delete the duplicate instead`, 'err');
+      return;
+    }
+  }
+
+  // 2. Warn on very similar name (normalized compare, ignore spaces/case/punctuation)
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const normName = norm(name);
+  const nameDupe = otherParts.find(p => p.name && norm(p.name) === normName);
+  if (nameDupe) {
+    const go = confirm(
+      `A part with a very similar name already exists:\n\n` +
+      `  "${nameDupe.name}" (${nameDupe.partNumber || 'no part #'})\n\n` +
+      `Are you sure this is a different part and not a duplicate?`
+    );
+    if (!go) return;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Disable save button and set guard to prevent double-tap duplicates
   _savingItem = true;
   const saveBtn = document.querySelector('#addModal .btn-primary');
