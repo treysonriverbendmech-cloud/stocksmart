@@ -3622,15 +3622,23 @@ function renderHCPPendingList() {
     const matchBadge = item.matchType==='hcpUuid'
       ? `<span style="font-size:10px;background:rgba(99,102,241,.15);color:var(--accent);border-radius:4px;padding:1px 6px">✓ UUID match</span>`
       : `<span style="font-size:10px;background:rgba(245,158,11,.15);color:var(--amber);border-radius:4px;padding:1px 6px">Part # match</span>`;
+    const techLabel  = item.tech && item.tech !== 'Unknown' ? xss(item.tech) : '<span style="color:var(--amber)">Tech unknown</span>';
+    const locLabel   = item.locationName
+      ? `<span style="color:var(--accent)">🚐 ${xss(item.locationName)}</span>`
+      : '<span style="color:var(--text-muted)">Location not mapped</span>';
     return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;color:var(--text);font-size:14px">${xss(item.partName)}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job #${xss(item.jobNumber)} · ${xss(item.tech)} · ${date}</div>
-          ${item.locationName ? `<div style="font-size:11px;color:var(--accent);margin-top:2px">📍 From: ${xss(item.locationName)}</div>` : ''}
         </div>
         ${matchBadge}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;margin-bottom:8px;padding:8px;background:var(--surface);border-radius:6px">
+        <div><span style="color:var(--text-muted)">Job #</span> <strong style="color:var(--text)">${xss(item.jobNumber)}</strong></div>
+        <div><span style="color:var(--text-muted)">Date</span> <strong style="color:var(--text)">${date}</strong></div>
+        <div><span style="color:var(--text-muted)">Tech</span> ${techLabel}</div>
+        <div>${locLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;font-size:13px;margin-bottom:12px">
         <span>Qty used: <strong>${item.quantity}</strong></span>

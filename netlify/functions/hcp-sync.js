@@ -119,9 +119,28 @@ exports.handler = async (event) => {
     const pending   = [];
     const unmatched = [];
 
+    // Debug: capture a raw job sample to help diagnose field names
+    if (fullJobs.length > 0) {
+      debugInfo.rawJobKeys   = JSON.stringify(Object.keys(fullJobs[0])).substring(0, 400);
+      debugInfo.rawJobSample = JSON.stringify(fullJobs[0]).substring(0, 800);
+    }
+
     for (const job of fullJobs) {
-      const jobNum      = job.job_number || job.id || 'Unknown';
-      const tech        = (job.assigned_employees || []).map(e => e.name || e.full_name || '').filter(Boolean).join(', ') || 'Unknown';
+      // Try every known HCP field name for the human-readable job number
+      const jobNum = job.job_number || job.number || job.custom_job_number
+                   || job.invoice_number || job.work_order_number
+                   || (job.id ? String(job.id).replace(/^job_/i, '#') : 'Unknown');
+
+      // Try every known field name for assigned technicians
+      const empArray = job.assigned_employees || job.assigned_employee
+                     || job.employees || job.technicians || job.pros || [];
+      const empList  = Array.isArray(empArray) ? empArray : [empArray];
+      const tech     = empList
+        .map(e => e ? (e.full_name || e.name || `${e.first_name||''} ${e.last_name||''}`.trim()) : '')
+        .filter(Boolean).join(', ')
+        || (job.pro ? (job.pro.full_name || job.pro.name || '') : '')
+        || 'Unknown';
+
       const completedAt = job.completed_at || job.updated_at || new Date().toISOString();
       const lineItems   = job.line_items || job.materials || job.invoice_items || [];
 
