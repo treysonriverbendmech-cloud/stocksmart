@@ -925,8 +925,9 @@
           <button class="btn btn-ghost btn-sm" style="flex:1" onclick="saveHCPApiKey()">💾 Save Key</button>
           <button class="btn btn-primary btn-sm" style="flex:2" id="hcpSyncBtn" onclick="runHCPSync()">🔄 Sync Now</button>
         </div>
-        <div style="margin-top:8px">
-          <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px;opacity:0.7" onclick="resetHCPSyncDate()">↩ Reset Sync Date (re-scan all history)</button>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;opacity:0.7" onclick="resetHCPSyncDate()">↩ Reset Sync Date</button>
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;opacity:0.7;color:var(--amber)" onclick="clearHCPSyncHistory()">🗑 Clear Sync History</button>
         </div>
         <div id="hcpSyncStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
       </div>
@@ -3366,9 +3367,41 @@ window.resetHCPSyncDate = async function() {
   try {
     await setDoc(coDoc('settings','hcp'), { lastSyncAt: null }, { merge: true });
     const statusEl = document.getElementById('hcpSyncStatus');
-    statusEl.innerHTML = '<span style="color:var(--green)">✓ Sync date reset — next sync will scan the last 90 days</span>';
-    toast('Sync date cleared — hit Sync Now to re-scan 90 days','ok');
+    statusEl.innerHTML = '<span style="color:var(--green)">✓ Sync date reset — hit Sync Now to re-scan all history</span>';
+    toast('Sync date cleared — hit Sync Now to re-scan','ok');
   } catch(e) { toast('Reset failed: '+e.message,'err'); }
+};
+
+window.clearHCPSyncHistory = async function() {
+  if (!requireAdmin('Clearing sync history')) return;
+  const confirmed = confirm(
+    'This clears the list of already-processed jobs so skipped items can come back on the next sync.\n\n' +
+    'WARNING: If you previously APPROVED any items (inventory was already deducted), those jobs will re-appear as pending — skip them on re-review.\n\n' +
+    'Continue?'
+  );
+  if (!confirmed) return;
+  const statusEl = document.getElementById('hcpSyncStatus');
+  statusEl.textContent = 'Clearing sync history…';
+  try {
+    // Delete all hcpSyncedJobs docs in batches
+    let cleared = 0;
+    let snap = await getDocs(co('hcpSyncedJobs'));
+    while (!snap.empty) {
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+      cleared += snap.docs.length;
+      snap = await getDocs(co('hcpSyncedJobs'));
+    }
+    // Also clear any leftover pending items
+    const pendingSnap = await getDocs(co('hcpPending'));
+    await Promise.all(pendingSnap.docs.map(d => deleteDoc(d.ref)));
+    // Reset sync date too so we re-scan everything
+    await setDoc(coDoc('settings','hcp'), { lastSyncAt: null }, { merge: true });
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Cleared ${cleared} processed jobs — hit Sync Now to re-queue everything</span>`;
+    toast(`Sync history cleared (${cleared} jobs) — Sync Now to re-queue`, 'ok');
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--red)">Error: ${xss(e.message)}</span>`;
+    toast('Clear failed: '+e.message,'err');
+  }
 };
 
 window.runHCPSync = async function() {
