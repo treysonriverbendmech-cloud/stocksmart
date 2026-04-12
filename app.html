@@ -3521,7 +3521,9 @@ window.runHCPSync = async function() {
     const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Statuses: ${statusesSeen.join(', ')}</span>` : '';
     const debugNote = [
       debugInfo.totalPages ? `Pages: ${debugInfo.totalPages} · Jobs on p1: ${debugInfo.jobsOnPage1}` : '',
-    ].filter(Boolean).map(t=>`<br><span style="font-size:11px;color:var(--text-muted)">${xss(t)}</span>`).join('');
+      debugInfo.rawJobKeys  ? `Job fields: ${xss(debugInfo.rawJobKeys)}`  : '',
+      debugInfo.rawJobSample ? `Sample: ${xss(debugInfo.rawJobSample.substring(0,300))}` : '',
+    ].filter(Boolean).map(t=>`<br><span style="font-size:11px;color:var(--text-muted);word-break:break-all">${t}</span>`).join('');
     // Link opens the proper unmatched modal (not an inline toggle — that had an ID conflict with the modal's list)
     const unmatchedNote = unmatched.length > 0
       ? ` · <a href="#" onclick="event.preventDefault();openUnmatched()" style="color:var(--amber);text-decoration:underline">${unmatched.length} unmatched items</a>`
