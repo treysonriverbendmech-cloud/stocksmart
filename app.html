@@ -2075,6 +2075,10 @@ window.openAdd = function(id=null) {
   document.getElementById('addTitle').textContent = id ? 'Edit Part' : 'Add Part';
   populateBoxSelect();
   hideConfidence();
+  // Always reset save button state so it's never stuck on "Saving…" from a prior save
+  _savingItem = false;
+  const _sb = document.querySelector('#addModal .btn-primary');
+  if (_sb) { _sb.disabled = false; _sb.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save Part'; }
 
   if (id) {
     const p = parts.find(i=>i.id===id);
