@@ -1937,6 +1937,9 @@ function renderGrid() {
   const normName2 = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
   const nameLocCounts = {};
   parts.forEach(p => { if (p.name) { const k=normName2(p.name)+'||'+(p.boxId||''); nameLocCounts[k]=(nameLocCounts[k]||0)+1; } });
+  // Count how many distinct locations stock each part number (for "1 of N" badge)
+  const pnLocationSet = {};
+  parts.forEach(p => { if (p.partNumber) { if (!pnLocationSet[p.partNumber]) pnLocationSet[p.partNumber]=new Set(); pnLocationSet[p.partNumber].add(p.boxId||'none'); } });
 
   grid.innerHTML = filtered.map(p => {
     const catClass = CAT_CLASS[p.category] || 'cat-general';
@@ -1944,6 +1947,9 @@ function renderGrid() {
     const isLow = p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity);
     const isDupe = (p.partNumber && pnLocCounts[`${p.partNumber}||${p.boxId||''}`] > 1)
                || (p.name && nameLocCounts[normName2(p.name)+'||'+(p.boxId||'')] > 1);
+    // "1 of N" — how many locations stock this part number (only show when N > 1 and not a true dupe)
+    const locTotal = p.partNumber ? (pnLocationSet[p.partNumber]?.size || 1) : 1;
+    const showLocBadge = locTotal > 1 && !isDupe;
     const thumb = p.photo
       ? `<img src="${p.photo}" alt="${xss(p.name)}" loading="lazy">`
       : `<div class="card-thumb-icon">🔩</div>`;
@@ -1964,6 +1970,7 @@ function renderGrid() {
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
           ${isDupe?`<span class="low-stock" style="color:#f87171;background:rgba(248,113,113,.15)">⚠ Duplicate</span>`:''}
+          ${showLocBadge?`<span class="meta-item" style="font-size:11px;color:var(--accent);background:rgba(99,102,241,.12);border-radius:100px;padding:1px 7px;font-weight:600">📦 ${locTotal} locations</span>`:''}
           ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
         ${kws?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${kws}</div>`:''}
