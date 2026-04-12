@@ -1207,7 +1207,8 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, signInWithRedirect,
   getRedirectResult, GoogleAuthProvider,
-  signOut, sendPasswordResetEmail
+  signOut, sendPasswordResetEmail,
+  browserLocalPersistence, setPersistence
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -1225,6 +1226,8 @@ const db   = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 const auth = getAuth(app);
+// Explicitly set local persistence so iOS PWA stays logged in after app is closed/reopened
+await setPersistence(auth, browserLocalPersistence);
 const googleProvider = new GoogleAuthProvider();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -1812,14 +1815,26 @@ function normalizeNumbers(text) {
 // ── Relevance score: parts matching in the name rank above notes/keyword matches ──
 function relevanceScore(p, tokens) {
   const name = normalizeNumbers((p.name || '').toLowerCase());
-  const norm = s => s.replace(/[\s.]+/g,'');
+  const norm = s => s.replace(/[\s.\-\/]+/g,'');
+  const nameNorm = norm(name);
   let score = 0;
   tokens.forEach(t => {
-    if (name.includes(t) || norm(name).includes(norm(t))) score += 3; // name hit = highest
-    if ((p.partNumber||'').toLowerCase().includes(t)) score += 2;     // part# hit = high
+    const tNorm = norm(t);
+    if (name.includes(t) || nameNorm.includes(tNorm)) score += 3;     // name hit
+    if ((p.partNumber||'').toLowerCase().includes(t)) score += 2;     // part# hit
+    // Strong prefix bonus: token appears at the very start of the name
+    if (name.startsWith(t) || nameNorm.startsWith(tNorm)) score += 8;
+    // Word-boundary prefix: token matches at start of any word in the name
+    try {
+      if (new RegExp('(?:^|\\s)' + t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).test(name)) score += 4;
+    } catch(e) {}
   });
-  // Bonus if all tokens appear together in the name (exact phrase-ish match)
-  if (tokens.every(t => name.includes(t))) score += 5;
+  // Bonus if ALL tokens appear in the name
+  if (tokens.every(t => name.includes(t) || nameNorm.includes(norm(t)))) score += 5;
+  // Extra bonus if the full joined query matches at the start of the name
+  const joinedQuery = tokens.join(' ');
+  const joinedNorm = norm(joinedQuery);
+  if (name.startsWith(joinedQuery) || nameNorm.startsWith(joinedNorm)) score += 10;
   return score;
 }
 
@@ -2485,13 +2500,10 @@ window.resetCat = function(cat) {
 
 window.saveSettings = async function() {
   try {
+    // Use merge:true so only subcategories field is updated, never clobbering branding/team fields
     await setDoc(coDoc('settings','app'), {
-      subcategories: settings.subcategories,
-      companyName: settings.companyName,
-      appSubtitle: settings.appSubtitle,
-      logoUrl: settings.logoUrl,
-      techs: settings.techs
-    });
+      subcategories: settings.subcategories
+    }, { merge: true });
     toast('Settings saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
 };
@@ -2627,10 +2639,10 @@ window.saveBranding = async function() {
   const logoUrl  = pendingLogoData !== null ? pendingLogoData : settings.logoUrl;
   const logoSize = Number(document.getElementById('logoSizeSlider').value);
   try {
+    // Use merge:true — only update branding fields, never touch subcategories or team settings
     await setDoc(coDoc('settings','app'), {
-      subcategories: settings.subcategories,
       companyName, appSubtitle, logoUrl, logoSize
-    });
+    }, { merge: true });
     settings.companyName = companyName;
     settings.appSubtitle = appSubtitle;
     settings.logoUrl     = logoUrl;
@@ -2693,11 +2705,10 @@ window.deleteTech = async function(idx) {
 
 async function saveTeamSettings() {
   try {
+    // Use merge:true — only update team/techs field, never clobber subcategories or branding
     await setDoc(coDoc('settings','app'), {
-      subcategories: settings.subcategories,
-      companyName: settings.companyName, appSubtitle: settings.appSubtitle,
-      logoUrl: settings.logoUrl, techs: settings.techs
-    });
+      techs: settings.techs
+    }, { merge: true });
     toast('Team saved!','ok');
   } catch(err) { toast('Save failed: '+err.message,'err'); }
 }
