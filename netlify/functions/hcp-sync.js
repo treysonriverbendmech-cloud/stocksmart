@@ -167,27 +167,25 @@ exports.handler = async (event) => {
     }
 
     for (const job of fullJobs) {
-      // Try every known HCP field name for the human-readable job number
-      const jobNum = job.job_number || job.number || job.custom_job_number
-                   || job.invoice_number || job.work_order_number
-                   || (job.id ? String(job.id).replace(/^job_/i, '#') : 'Unknown');
+      // job_number is confirmed as the HCP field (integer). Keep fallbacks for edge cases.
+      const jobNumRaw = job.job_number ?? job.number ?? job.custom_job_number
+                     ?? job.invoice_number ?? job.work_order_number ?? null;
+      const jobNum = jobNumRaw !== null && jobNumRaw !== undefined
+        ? String(jobNumRaw)
+        : (job.id ? `#${String(job.id).replace(/^job_/i, '').slice(-8)}` : 'Unknown');
 
-      // Try every known field name for assigned technicians.
-      // HCP individual-job endpoint puts employees in schedule.dispatched_employees.
-      const schedEmp = (job.schedule?.dispatched_employees)
-                    || (job.schedule?.employees)
-                    || [];
-      const empArray = job.assigned_employees || job.assigned_employee
-                     || job.employees || job.technicians || job.pros
-                     || schedEmp;
-      const empList  = Array.isArray(empArray) ? empArray
-                     : (empArray ? [empArray] : []);
-      // Also check schedEmp even if empArray came from another field
-      const allEmps  = [...empList, ...(Array.isArray(schedEmp) ? schedEmp : [])];
-      const uniqueEmps = allEmps.filter((e, i, arr) =>
-        e && arr.findIndex(x => x === e || (x?.id && x.id === e?.id)) === i
-      );
-      const tech     = uniqueEmps
+      // schedule.dispatched_employees confirmed as HCP's tech field.
+      // full_name is the confirmed field on each employee object.
+      const schedEmps = Array.isArray(job.schedule?.dispatched_employees)
+        ? job.schedule.dispatched_employees
+        : (Array.isArray(job.schedule?.employees) ? job.schedule.employees : []);
+      // Fallback to other known fields if schedule isn't populated yet
+      const fallbackEmps = job.assigned_employees || job.assigned_employee
+                         || job.employees || job.technicians || job.pros || [];
+      const empList = schedEmps.length > 0
+        ? schedEmps
+        : (Array.isArray(fallbackEmps) ? fallbackEmps : [fallbackEmps]);
+      const tech = empList
         .map(e => e ? (e.full_name || e.name || `${e.first_name||''} ${e.last_name||''}`.trim()) : '')
         .filter(Boolean).join(', ')
         || (job.pro ? (job.pro.full_name || job.pro.name || '') : '')
