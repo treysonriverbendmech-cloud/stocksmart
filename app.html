@@ -3624,6 +3624,8 @@ function renderHCPPendingList() {
   listEl.innerHTML = hcpPendingItems.map(item => {
     const date = item.completedAt ? new Date(item.completedAt).toLocaleDateString() : '—';
     const afterQty = Math.max(0, (item.currentQty||0) - (item.quantity||1));
+    const rawJobNum = item.jobNumber || item.jobId || '';
+    const jobNumDisplay = rawJobNum.startsWith('job_') ? `#…${rawJobNum.slice(-8)}` : (rawJobNum || '—');
     const matchBadge = item.matchType==='hcpUuid'
       ? `<span style="font-size:10px;background:rgba(99,102,241,.15);color:var(--accent);border-radius:4px;padding:1px 6px">✓ UUID match</span>`
       : `<span style="font-size:10px;background:rgba(245,158,11,.15);color:var(--amber);border-radius:4px;padding:1px 6px">Part # match</span>`;
@@ -3640,7 +3642,7 @@ function renderHCPPendingList() {
         ${matchBadge}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;margin-bottom:8px;padding:8px;background:var(--surface);border-radius:6px">
-        <div><span style="color:var(--text-muted)">Job #</span> <strong style="color:var(--text)">${xss(item.jobNumber)}</strong></div>
+        <div><span style="color:var(--text-muted)">Job #</span> <strong style="color:var(--text)">${xss(jobNumDisplay)}</strong></div>
         <div><span style="color:var(--text-muted)">Date</span> <strong style="color:var(--text)">${date}</strong></div>
         <div><span style="color:var(--text-muted)">Tech</span> ${techLabel}</div>
         <div>${locLabel}</div>
