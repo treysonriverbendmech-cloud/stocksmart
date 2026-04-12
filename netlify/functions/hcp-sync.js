@@ -119,10 +119,11 @@ exports.handler = async (event) => {
     const pending   = [];
     const unmatched = [];
 
-    // Debug: capture a raw job sample to help diagnose field names
-    if (fullJobs.length > 0) {
-      debugInfo.rawJobKeys   = JSON.stringify(Object.keys(fullJobs[0])).substring(0, 400);
-      debugInfo.rawJobSample = JSON.stringify(fullJobs[0]).substring(0, 800);
+    // Debug: capture a raw job sample — use completedJobs as fallback if fullJobs is empty
+    const sampleJob = fullJobs[0] || completedJobs[0] || null;
+    if (sampleJob) {
+      debugInfo.rawJobKeys   = JSON.stringify(Object.keys(sampleJob)).substring(0, 400);
+      debugInfo.rawJobSample = JSON.stringify(sampleJob).substring(0, 800);
     }
 
     for (const job of fullJobs) {
