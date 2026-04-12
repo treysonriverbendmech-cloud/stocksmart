@@ -3684,6 +3684,7 @@ function renderHCPPendingList() {
         <span>Qty used: <strong>${item.quantity}</strong></span>
         <span style="color:var(--text-muted)">→</span>
         <span>Stock: <strong>${item.currentQty}</strong> → <strong style="color:${afterQty<=0?'var(--red)':'var(--text)'}">${afterQty}</strong></span>
+        ${item.unitPrice > 0 ? `<span style="color:var(--text-muted)">·</span><span style="color:var(--green);font-weight:700">$${(+(item.unitPrice||0)).toFixed(2)}</span>` : ''}
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" style="flex:1" onclick="skipHCPDeduction('${item._id}')">Skip</button>
