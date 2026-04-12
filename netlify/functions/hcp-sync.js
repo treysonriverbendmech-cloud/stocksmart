@@ -88,18 +88,42 @@ exports.handler = async (event) => {
 
     } while (page <= totalPages && page <= 20); // up to 20 pages = 2000 jobs
 
-    // ── 2. Fetch line items in batches of 5 to avoid timeouts ────────────────
+    // ── 2. Fetch line items AND full job detail in batches of 5 ─────────────
+    // Individual job endpoint returns schedule.dispatched_employees (tech names)
+    // and a confirmed job_number — things the list endpoint often omits.
     const fullJobs = [];
     const BATCH = 5;
     for (let i = 0; i < completedJobs.length; i += BATCH) {
       const chunk = completedJobs.slice(i, i + BATCH);
       const results = await Promise.all(chunk.map(async job => {
         try {
-          const liResp = await fetch(`${HCP_BASE}/jobs/${job.id}/line_items`, { headers });
-          if (!liResp.ok) return { ...job, line_items: [] };
-          const liData = await liResp.json();
-          const lineItems = liData.data || liData.line_items || (Array.isArray(liData) ? liData : []);
-          return { ...job, line_items: lineItems };
+          // Fetch line items and individual job detail in parallel
+          const [liResp, detailResp] = await Promise.all([
+            fetch(`${HCP_BASE}/jobs/${job.id}/line_items`, { headers }),
+            fetch(`${HCP_BASE}/jobs/${job.id}`, { headers }),
+          ]);
+
+          // Parse line items
+          let parsedLineItems = [];
+          if (liResp.ok) {
+            try {
+              const liData = await liResp.json();
+              parsedLineItems = liData.data || liData.line_items || (Array.isArray(liData) ? liData : []);
+            } catch(e) {}
+          }
+
+          // Merge individual job detail on top of list data (detail is more complete)
+          let merged = { ...job };
+          if (detailResp.ok) {
+            try {
+              const detail = await detailResp.json();
+              // detail may be the job object directly, or wrapped
+              const detailJob = detail.id ? detail : (detail.job || detail.data || detail);
+              merged = { ...job, ...detailJob };
+            } catch(e) {}
+          }
+
+          return { ...merged, line_items: parsedLineItems };
         } catch(e) {
           return { ...job, line_items: [] };
         }
@@ -122,8 +146,13 @@ exports.handler = async (event) => {
     // Debug: capture a raw job sample — use completedJobs as fallback if fullJobs is empty
     const sampleJob = fullJobs[0] || completedJobs[0] || null;
     if (sampleJob) {
-      debugInfo.rawJobKeys   = JSON.stringify(Object.keys(sampleJob)).substring(0, 400);
-      debugInfo.rawJobSample = JSON.stringify(sampleJob).substring(0, 800);
+      debugInfo.rawJobKeys   = JSON.stringify(Object.keys(sampleJob)).substring(0, 500);
+      debugInfo.rawJobSample = JSON.stringify(sampleJob).substring(0, 1200);
+      // Highlight exactly what we resolved for this job
+      debugInfo.resolvedJobNum  = sampleJob.job_number ?? sampleJob.number ?? sampleJob.custom_job_number ?? sampleJob.invoice_number ?? '(none found)';
+      debugInfo.resolvedTech    = sampleJob.schedule?.dispatched_employees
+        ? JSON.stringify(sampleJob.schedule.dispatched_employees).substring(0, 300)
+        : (sampleJob.assigned_employees ? JSON.stringify(sampleJob.assigned_employees).substring(0, 300) : '(no employee field found)');
     }
 
     for (const job of fullJobs) {
@@ -132,11 +161,22 @@ exports.handler = async (event) => {
                    || job.invoice_number || job.work_order_number
                    || (job.id ? String(job.id).replace(/^job_/i, '#') : 'Unknown');
 
-      // Try every known field name for assigned technicians
+      // Try every known field name for assigned technicians.
+      // HCP individual-job endpoint puts employees in schedule.dispatched_employees.
+      const schedEmp = (job.schedule?.dispatched_employees)
+                    || (job.schedule?.employees)
+                    || [];
       const empArray = job.assigned_employees || job.assigned_employee
-                     || job.employees || job.technicians || job.pros || [];
-      const empList  = Array.isArray(empArray) ? empArray : [empArray];
-      const tech     = empList
+                     || job.employees || job.technicians || job.pros
+                     || schedEmp;
+      const empList  = Array.isArray(empArray) ? empArray
+                     : (empArray ? [empArray] : []);
+      // Also check schedEmp even if empArray came from another field
+      const allEmps  = [...empList, ...(Array.isArray(schedEmp) ? schedEmp : [])];
+      const uniqueEmps = allEmps.filter((e, i, arr) =>
+        e && arr.findIndex(x => x === e || (x?.id && x.id === e?.id)) === i
+      );
+      const tech     = uniqueEmps
         .map(e => e ? (e.full_name || e.name || `${e.first_name||''} ${e.last_name||''}`.trim()) : '')
         .filter(Boolean).join(', ')
         || (job.pro ? (job.pro.full_name || job.pro.name || '') : '')
