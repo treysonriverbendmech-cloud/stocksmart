@@ -1930,18 +1930,20 @@ function renderGrid() {
       ${parts.length===0?'<button class="btn btn-primary" onclick="openAdd()">Add First Part</button>':''}
     </div>`; return;
   }
-  // Pre-compute duplicate part numbers for badge display
-  const pnCounts = {};
-  parts.forEach(p => { if (p.partNumber) pnCounts[p.partNumber] = (pnCounts[p.partNumber]||0)+1; });
+  // Pre-compute duplicates — same part# AND same location is a true duplicate
+  // Same part# in DIFFERENT locations is intentional stock splitting, not a duplicate
+  const pnLocCounts = {};
+  parts.forEach(p => { if (p.partNumber) { const k=`${p.partNumber}||${p.boxId||''}`; pnLocCounts[k]=(pnLocCounts[k]||0)+1; } });
   const normName2 = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
-  const nameCounts = {};
-  parts.forEach(p => { if (p.name) { const k=normName2(p.name); nameCounts[k]=(nameCounts[k]||0)+1; } });
+  const nameLocCounts = {};
+  parts.forEach(p => { if (p.name) { const k=normName2(p.name)+'||'+(p.boxId||''); nameLocCounts[k]=(nameLocCounts[k]||0)+1; } });
 
   grid.innerHTML = filtered.map(p => {
     const catClass = CAT_CLASS[p.category] || 'cat-general';
     const box = boxes.find(b => b.id === p.boxId);
     const isLow = p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity);
-    const isDupe = (p.partNumber && pnCounts[p.partNumber] > 1) || (p.name && nameCounts[normName2(p.name)] > 1);
+    const isDupe = (p.partNumber && pnLocCounts[`${p.partNumber}||${p.boxId||''}`] > 1)
+               || (p.name && nameLocCounts[normName2(p.name)+'||'+(p.boxId||'')] > 1);
     const thumb = p.photo
       ? `<img src="${p.photo}" alt="${xss(p.name)}" loading="lazy">`
       : `<div class="card-thumb-icon">🔩</div>`;
@@ -2291,23 +2293,30 @@ window.saveItem = async function() {
   // ── Duplicate safeguards ──────────────────────────────────────────────────
   const otherParts = parts.filter(p => p.id !== editingId);
 
-  // 1. Block on exact part number match (most reliable signal)
+  // 1. Block on exact part number + same location (different locations = valid stock split)
   const partNumInput = (document.getElementById('partNumDisplay').textContent || '').trim();
+  const currentBoxId = document.getElementById('fBoxSel').value;
   if (partNumInput) {
-    const pnDupe = otherParts.find(p => p.partNumber && p.partNumber.trim().toLowerCase() === partNumInput.toLowerCase());
+    const pnDupe = otherParts.find(p =>
+      p.partNumber && p.partNumber.trim().toLowerCase() === partNumInput.toLowerCase()
+      && (p.boxId || '') === (currentBoxId || '')
+    );
     if (pnDupe) {
-      toast(`Part # ${partNumInput} already exists: "${pnDupe.name}" — merge or delete the duplicate instead`, 'err');
+      toast(`Part # ${partNumInput} already exists at this location: "${pnDupe.name}" — merge or delete the duplicate instead`, 'err');
       return;
     }
   }
 
-  // 2. Warn on very similar name (normalized compare, ignore spaces/case/punctuation)
+  // 2. Warn on very similar name at the same location
   const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
   const normName = norm(name);
-  const nameDupe = otherParts.find(p => p.name && norm(p.name) === normName);
+  const nameDupe = otherParts.find(p =>
+    p.name && norm(p.name) === normName
+    && (p.boxId || '') === (currentBoxId || '')
+  );
   if (nameDupe) {
     const go = confirm(
-      `A part with a very similar name already exists:\n\n` +
+      `A part with a very similar name already exists at this location:\n\n` +
       `  "${nameDupe.name}" (${nameDupe.partNumber || 'no part #'})\n\n` +
       `Are you sure this is a different part and not a duplicate?`
     );
