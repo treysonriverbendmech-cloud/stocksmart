@@ -2094,6 +2094,10 @@ function resetForm() {
   document.getElementById('fCylSize').value='';
   trackUnit = null; updateUnitTrackUI();
   photoData=null; editingId=null; resetZone(); hideConfidence();
+  // Reset save button state in case a previous save was interrupted
+  _savingItem = false;
+  const saveBtn = document.querySelector('#addModal .btn-primary');
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save Part'; }
 }
 
 function populateBoxSelect() {
@@ -2218,7 +2222,9 @@ window.analyzePhoto = async function() {
 };
 
 // ─── Save part ────────────────────────────────────────────────────────────────
+let _savingItem = false; // guard against double-tap creating duplicates
 window.saveItem = async function() {
+  if (_savingItem) return; // already in flight — ignore extra taps
   const name=document.getElementById('fName').value.trim();
   if (!name) { toast('Part name is required','err'); document.getElementById('fName').focus(); return; }
   const kw = document.getElementById('fKeywords').value.split(',').map(s=>s.trim()).filter(Boolean);
@@ -2247,6 +2253,10 @@ window.saveItem = async function() {
     cylinderSize:  trackUnit === 'lbs' ? cylSize : null,
     updatedAt:     serverTimestamp(),
   };
+  // Disable save button and set guard to prevent double-tap duplicates
+  _savingItem = true;
+  const saveBtn = document.querySelector('#addModal .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
   try {
     if (editingId) {
       await updateDoc(coDoc('parts',editingId), data);
@@ -2262,7 +2272,13 @@ window.saveItem = async function() {
       });
     }
     closeModal('addModal');
-  } catch(err) { console.error(err); toast('Save failed: '+err.message,'err'); }
+  } catch(err) {
+    console.error(err); toast('Save failed: '+err.message,'err');
+    // Re-enable button on error so user can try again
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save Part'; }
+  } finally {
+    _savingItem = false;
+  }
 };
 
 // ─── Detail view ──────────────────────────────────────────────────────────────
