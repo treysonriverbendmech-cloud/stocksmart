@@ -506,6 +506,7 @@
       <input id="authEmail" class="finput" type="email" placeholder="Email address" autocomplete="email">
       <input id="authPassword" class="finput" type="password" placeholder="Password" autocomplete="current-password">
       <input id="authPasswordConfirm" class="finput hidden" type="password" placeholder="Confirm password" autocomplete="new-password">
+      <input id="authInviteCode" class="finput hidden" type="text" placeholder="Beta invite code" autocomplete="off" style="letter-spacing:0.08em">
     </div>
 
     <!-- Primary action button -->
@@ -1374,6 +1375,7 @@ function switchLoginTab(tab) {
   document.getElementById('signupTabBtn').style.color       = isLogin ? 'var(--text-muted)' : '#fff';
   document.getElementById('authSubmitBtn').textContent      = isLogin ? 'Sign In' : 'Create Account';
   document.getElementById('authPasswordConfirm').classList.toggle('hidden', isLogin);
+  document.getElementById('authInviteCode').classList.toggle('hidden', isLogin);
   document.getElementById('forgotPasswordRow').style.display = isLogin ? '' : 'none';
   document.getElementById('authError').style.display = 'none';
 }
@@ -1392,6 +1394,18 @@ window.handleEmailAuth = async function() {
   if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
   if (isSignup && password !== confirm) { showAuthError('Passwords do not match.'); return; }
   if (isSignup && password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+  if (isSignup) {
+    const inviteCode = document.getElementById('authInviteCode').value.trim();
+    if (!inviteCode) { showAuthError('Beta invite code required. Contact us at hello@getpartlocker.com to get access.'); return; }
+    try {
+      const res = await fetch('/.netlify/functions/validate-invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: inviteCode })
+      });
+      const { valid } = await res.json();
+      if (!valid) { showAuthError('Invalid invite code. Contact hello@getpartlocker.com to get access.'); return; }
+    } catch { showAuthError('Could not verify invite code. Check your connection and try again.'); return; }
+  }
   try {
     if (isSignup) {
       await createUserWithEmailAndPassword(auth, email, password);
