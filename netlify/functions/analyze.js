@@ -100,7 +100,10 @@ Keywords: 3-6 relevant search terms (brand, model, part number visible in image,
         console.log('Anthropic response:', raw.slice(0, 400));
 
         if (res.statusCode !== 200) {
-          resolve({ statusCode: 502, body: JSON.stringify({ error: 'Anthropic error', status: res.statusCode, detail: raw }) });
+          let errMsg = 'Anthropic error';
+          try { errMsg = JSON.parse(raw)?.error?.message || errMsg; } catch(e) {}
+          console.error('Anthropic error:', res.statusCode, raw.slice(0, 500));
+          resolve({ statusCode: 502, body: JSON.stringify({ error: errMsg, status: res.statusCode, detail: raw }) });
           return;
         }
 

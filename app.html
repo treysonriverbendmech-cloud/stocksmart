@@ -2359,13 +2359,18 @@ window.analyzePhoto = async function() {
   const txt=document.getElementById('aiBtnTxt');
   btn.disabled=true; txt.innerHTML='<span class="spin"></span> Analyzing…';
   try {
-    const b64  = photoData.split(',')[1];
-    const mime = photoData.split(';')[0].slice(5);
+    const compressed = await compressImage(photoData, 1200, 0.82);
+    const b64  = compressed.split(',')[1];
+    const mime = 'image/jpeg';
     const res  = await fetch('/.netlify/functions/analyze',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({imageBase64:b64, mediaType:mime})
     });
-    if (!res.ok) { const t=await res.text(); throw new Error(t||`HTTP ${res.status}`); }
+    if (!res.ok) {
+      const j = await res.json().catch(()=>({}));
+      const detail = j.detail ? (() => { try { return JSON.parse(j.detail)?.error?.message; } catch(e){ return j.detail?.slice?.(0,120); } })() : null;
+      throw new Error(detail || j.error || `HTTP ${res.status}`);
+    }
     const data = await res.json();
     if (data.name)     document.getElementById('fName').value  = data.name;
     if (data.category) {
@@ -3034,18 +3039,39 @@ window.onReceiptFile = async function(e) {
   toast('Receipt ready — tap Scan with AI','ok');
 };
 
+// Compress a data-URL image to ≤1200px wide and ≤0.85 JPEG quality
+async function compressImage(dataUrl, maxPx=1200, quality=0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
 window.scanReceipt = async function() {
   if (!receiptPhotoData) return;
   const btn=document.getElementById('receiptScanBtn'); btn.disabled=true;
   document.getElementById('receiptScanTxt').textContent='Scanning…';
   try {
+    // Compress receipt photo — camera shots can be 4-8 MB which trips the API
+    const compressed = await compressImage(receiptPhotoData, 1400, 0.82);
     const res = await fetch('/.netlify/functions/analyze',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ imageBase64: receiptPhotoData.split(',')[1], mediaType: receiptPhotoData.split(';')[0].slice(5), mode:'receipt' })
+      body: JSON.stringify({ imageBase64: compressed.split(',')[1], mediaType: 'image/jpeg', mode:'receipt' })
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error||'Scan failed');
+    if (!res.ok) {
+      // Surface the real Anthropic error, not just a generic label
+      const detail = json.detail ? (() => { try { return JSON.parse(json.detail)?.error?.message; } catch(e){ return json.detail?.slice?.(0,120); } })() : null;
+      throw new Error(detail || json.error || `HTTP ${res.status}`);
+    }
     receiptItems = (json.items||[]).map((item,i) => {
       // Try to find an existing inventory match (part# → price → name keywords)
       let inventoryMatch = null;
