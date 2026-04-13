@@ -1876,19 +1876,33 @@ function relevanceScore(p, tokens) {
 
 // ─── Find all copies of a duplicate part ─────────────────────────────────────
 window.findAllDupes = function(partNumber, name) {
-  // Clear all filters so nothing is hidden
+  const normStr = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normPN   = partNumber ? partNumber.trim().toLowerCase() : null;
+  const normName = name ? normStr(name) : null;
+
+  // Collect every part that shares this part number OR this normalized name
+  // regardless of category, location, or search — this catches copies with no PN
+  const matchIds = new Set(
+    parts.filter(p =>
+      (normPN   && p.partNumber && p.partNumber.trim().toLowerCase() === normPN) ||
+      (normName && p.name       && normStr(p.name) === normName)
+    ).map(p => p.id)
+  );
+
+  // Reset all UI filters so nothing is masked
   document.getElementById('catFilter').value = '';
   document.getElementById('subcatFilter').innerHTML = '<option value="">All Subcategories</option>';
   const boxSel = document.getElementById('boxFilter');
   if (boxSel) boxSel.value = '';
   const boxNumSel = document.getElementById('boxNumFilter');
   if (boxNumSel) boxNumSel.value = '';
-  // Search by part number if available, otherwise by name
-  const term = partNumber || name;
-  const searchInput = document.getElementById('searchInput');
-  searchInput.value = term;
-  applyFilters();
-  toast(`Showing all copies of "${term}" — delete the unwanted ones`, 'ok');
+  document.getElementById('searchInput').value = '';
+
+  // Bypass applyFilters entirely — set filtered directly and render
+  filtered = parts.filter(p => matchIds.has(p.id));
+  renderGrid();
+  const label = partNumber || name;
+  toast(`Showing all ${filtered.length} cop${filtered.length===1?'y':'ies'} of "${label}" — delete the unwanted ones`, filtered.length > 1 ? 'ok' : 'err');
 };
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
