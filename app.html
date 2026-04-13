@@ -2060,6 +2060,30 @@ function renderGrid() {
     if (ids.length > 1) ids.forEach(id => dupeIds.add(id));
   });
 
+  // Similar part number detection — catches manufacturer prefixes (M61445 vs 61445, HC21ZE vs HC21ZE121)
+  // Rule: if one PN contains the other as a start/end substring AND shared portion ≥ 4 chars → soft dupe
+  const softDupeIds = new Set();
+  const pnKeys = Object.keys(_pnGroups);
+  for (let i = 0; i < pnKeys.length; i++) {
+    for (let j = i + 1; j < pnKeys.length; j++) {
+      const pnA = pnKeys[i], pnB = pnKeys[j];
+      const shorter = pnA.length <= pnB.length ? pnA : pnB;
+      const longer  = pnA.length <= pnB.length ? pnB : pnA;
+      if (shorter.length >= 4 && (longer.startsWith(shorter) || longer.endsWith(shorter))) {
+        const itemsA = _pnGroups[pnA], itemsB = _pnGroups[pnB];
+        // Only flag if they share a location (or either has no location)
+        for (const a of itemsA) {
+          for (const b of itemsB) {
+            if (a.boxId === b.boxId || !a.boxId || !b.boxId) {
+              if (!dupeIds.has(a.id)) softDupeIds.add(a.id);
+              if (!dupeIds.has(b.id)) softDupeIds.add(b.id);
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Count REAL distinct locations per part number (only parts WITH an assigned location)
   // Unlocated copies are not counted as a "location" — they show as Duplicate instead
   const pnLocationSet = {};
@@ -2074,10 +2098,11 @@ function renderGrid() {
     const catClass = CAT_CLASS[p.category] || 'cat-general';
     const box = boxes.find(b => b.id === p.boxId);
     const isLow = p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity);
-    const isDupe = dupeIds.has(p.id);
+    const isDupe     = dupeIds.has(p.id);
+    const isSoftDupe = !isDupe && softDupeIds.has(p.id);
     // "1 of N" — how many locations stock this part number (only show when N > 1 and not a true dupe)
     const locTotal = p.partNumber ? (pnLocationSet[p.partNumber]?.size || 1) : 1;
-    const showLocBadge = locTotal > 1 && !isDupe;
+    const showLocBadge = locTotal > 1 && !isDupe && !isSoftDupe;
     const thumb = p.photo
       ? `<img src="${p.photo}" alt="${xss(p.name)}" loading="lazy">`
       : `<div class="card-thumb-icon">🔩</div>`;
@@ -2098,6 +2123,7 @@ function renderGrid() {
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
           ${isDupe?`<span class="low-stock find-dupes-btn" style="color:#f87171;background:rgba(248,113,113,.15);cursor:pointer" title="Tap to find all copies" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Duplicate — tap to find all</span>`:''}
+          ${isSoftDupe?`<span class="low-stock find-dupes-btn" style="color:var(--amber);background:rgba(251,191,36,.12);cursor:pointer" title="Similar part number found — tap to compare" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Similar PN — tap to compare</span>`:''}
           ${showLocBadge?`<span class="meta-item" style="font-size:11px;color:var(--accent);background:rgba(99,102,241,.12);border-radius:100px;padding:1px 7px;font-weight:600">📦 ${locTotal} locations</span>`:''}
           ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
