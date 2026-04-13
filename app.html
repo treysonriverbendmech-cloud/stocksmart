@@ -1657,6 +1657,7 @@ const CHEMICAL_TYPES = new Set(['Coil Cleaner','Evap Coil Cleaner','Condenser Co
 let parts       = [];
 let boxes       = [];
 let filtered    = [];
+let _dupeFilterIds = null; // when set, applyFilters shows only these IDs (duplicate search mode)
 let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'', techs:[] };
 let transactions = [];
 let currentView  = 'grid';
@@ -1885,7 +1886,7 @@ window.findAllDupes = function(partNumber, name) {
 
   // Collect every part that shares this part number OR this normalized name
   // regardless of category, location, or search — catches copies with no PN
-  const matchIds = new Set(
+  _dupeFilterIds = new Set(
     parts.filter(p =>
       (normPN   && p.partNumber && p.partNumber.trim().toLowerCase() === normPN) ||
       (normName && p.name       && normStr(p.name) === normName)
@@ -1901,11 +1902,10 @@ window.findAllDupes = function(partNumber, name) {
   if (boxNumSel) boxNumSel.value = '';
   document.getElementById('searchInput').value = '';
 
-  // Bypass applyFilters entirely — set filtered directly and render
-  filtered = parts.filter(p => matchIds.has(p.id));
-  renderGrid();
+  // Go through applyFilters so onSnapshot can't race and override the result
+  applyFilters();
   const label = partNumber || name;
-  toast(`Showing all ${filtered.length} cop${filtered.length===1?'y':'ies'} of "${label}" — delete the unwanted ones`, filtered.length > 1 ? 'ok' : 'err');
+  toast(`Showing all ${filtered.length} cop${filtered.length===1?'y':'ies'} of "${label}" — tap "✕ Clear" or search to exit`, filtered.length > 1 ? 'ok' : 'err');
 };
 
 // Delegated listener — avoids onclick attribute quote-escaping issues entirely
@@ -1923,6 +1923,18 @@ window.applyFilters = function() {
   const subcat = document.getElementById('subcatFilter').value;
   const boxId  = document.getElementById('boxFilter').value;
   const boxNum = document.getElementById('boxNumFilter').value;
+
+  // If a user actively types or picks a filter, exit duplicate search mode
+  if (_dupeFilterIds && (raw || cat || subcat || boxId || boxNum)) {
+    _dupeFilterIds = null;
+  }
+
+  // Duplicate search mode — show only the matched IDs, ignore all other filters
+  if (_dupeFilterIds) {
+    filtered = parts.filter(p => _dupeFilterIds.has(p.id));
+    renderGrid();
+    return;
+  }
 
   // Strip spaces and dots for fuzzy comparison — "5 MFD" ↔ "5MFD", "M.F.D" ↔ "MFD"
   const norm = s => (s||'').toLowerCase().replace(/[\s.]+/g, '');
