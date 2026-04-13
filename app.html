@@ -1908,13 +1908,15 @@ window.findAllDupes = function(partNumber, name) {
   toast(`Showing all ${filtered.length} cop${filtered.length===1?'y':'ies'} of "${label}" — tap "✕ Clear" or search to exit`, filtered.length > 1 ? 'ok' : 'err');
 };
 
-// Delegated listener — avoids onclick attribute quote-escaping issues entirely
+// Capture-phase listener — fires before the card's inline onclick so stopPropagation
+// prevents openDetail() from triggering when the Duplicate badge is tapped
 document.addEventListener('click', function(e) {
   const btn = e.target.closest('.find-dupes-btn');
   if (!btn) return;
-  e.stopPropagation(); // don't open the card detail
+  e.stopPropagation(); // cancel upward bubble — card onclick never fires
+  e.preventDefault();
   findAllDupes(btn.dataset.pn || '', btn.dataset.nm || '');
-});
+}, true); // true = capture phase (top-down, before any child handlers)
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 window.applyFilters = function() {
