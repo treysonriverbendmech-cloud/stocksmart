@@ -1076,7 +1076,9 @@
       </div>
 
       <div id="receiptResults" class="hidden" style="margin-top:16px">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Review items below. Uncheck any you don't want to add. <span style="color:var(--amber)">⚠ items</span> may already exist in inventory.</p>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
+          Review every item before confirming. <strong style="color:var(--accent)">🔗 In Inventory</strong> items will have their quantity restocked — verify the match is correct or tap <strong>+ New</strong> to add as a separate part instead.
+        </p>
         <div id="receiptItemList"></div>
         <button class="btn btn-primary btn-full btn-lg" style="margin-top:14px" onclick="confirmReceiptAdd()">✓ Add Checked Items to Inventory</button>
       </div>
@@ -3210,6 +3212,30 @@ window.confirmReceiptAdd = async function() {
   if (!toAdd.length && !toRestock.length) {
     toast('No items checked','err'); return;
   }
+
+  // ── Show a review summary before committing anything ─────────────────────
+  let summary = '';
+  if (toRestock.length) {
+    summary += `RESTOCK (quantity will be added to existing parts):\n`;
+    toRestock.forEach(item => {
+      const part = parts.find(p => p.id === item._dup.id);
+      const cur  = parseInt(part?.quantity) || 0;
+      const qty  = parseInt(item.quantity)  || 1;
+      summary += `  • ${item._dup.name}  ${cur} → ${cur + qty}  (${item._dup.boxName || 'no location'})\n`;
+      summary += `    Receipt said: "${item.name}"  PN: ${item.partNumber || 'none'}\n`;
+    });
+    summary += '\n';
+  }
+  if (toAdd.length) {
+    summary += `NEW PARTS (will be added to inventory):\n`;
+    toAdd.forEach(item => {
+      summary += `  • ${item.name}  qty ${item.quantity || 1}  $${(+(item.price||0)).toFixed(2)}\n`;
+    });
+    summary += '\n';
+  }
+  summary += 'Does everything look correct? Cancel to go back and fix matches.';
+
+  if (!confirm(summary)) return; // user can review and cancel
 
   // Get selected location
   const sel       = document.getElementById('receiptLocationSel');
