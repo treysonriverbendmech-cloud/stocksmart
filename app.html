@@ -183,7 +183,9 @@
     .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .frow3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     .form-section { display: flex; flex-direction: column; gap: 14px; }
-    .part-num-badge { font-size: 11px; color: var(--text-muted); background: var(--surface3); border: 1px solid var(--border); padding: 3px 10px; border-radius: 100px; font-weight: 600; letter-spacing: 0.04em; }
+    .part-num-badge { font-size: 11px; color: var(--text-muted); background: var(--surface3); border: 1px solid var(--border); padding: 3px 10px; border-radius: 100px; font-weight: 600; letter-spacing: 0.04em; cursor: text; transition: border-color .15s; }
+    .part-num-badge:hover { border-color: var(--accent); color: var(--text); }
+    .part-num-badge:focus { outline: none; border-color: var(--accent); color: var(--text); background: var(--surface2); box-shadow: 0 0 0 2px rgba(99,102,241,.18); }
 
     /* ── Photo zone ── */
     .photo-zone {
@@ -675,7 +677,8 @@
     <div class="sheet-head">
       <div style="display:flex;align-items:center;gap:10px">
         <span class="sheet-title" id="addTitle">Add Part</span>
-        <span class="part-num-badge" id="partNumDisplay"></span>
+        <span class="part-num-badge" id="partNumDisplay" contenteditable="true" spellcheck="false" title="Tap to edit part number" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}" onblur="this.textContent=this.textContent.trim().toUpperCase()"></span>
+        <span style="font-size:10px;color:var(--text-muted);opacity:.6" title="Part number is editable">✏</span>
       </div>
       <button class="close-x" onclick="closeModal('addModal')">✕</button>
     </div>
