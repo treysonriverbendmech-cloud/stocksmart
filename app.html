@@ -3079,30 +3079,39 @@ window.scanReceipt = async function() {
       let inventoryMatch = null;
       let matchType = null;
 
-      // 1. Part number exact match
+      // Match confidence levels:
+      //   'partNumber' = exact part# hit        → confident, auto-check
+      //   'price'      = unique price hit        → confident, auto-check
+      //   'name'       = keyword name only       → LOW CONFIDENCE, flagged amber, NOT auto-restocked
+      let matchConfidence = 'high';
+
+      // 1. Part number exact match (most reliable)
       if (item.partNumber) {
         const m = parts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
         if (m) { inventoryMatch = m; matchType = 'partNumber'; }
       }
-      // 2. Exact price match — only if unique
-      if (!inventoryMatch && item.price > 0) {
+      // 2. Exact price match — only if unique AND price is non-trivial (>$1 avoids false hits on cheap fittings)
+      if (!inventoryMatch && item.price > 1) {
         const priceMatches = parts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
         if (priceMatches.length === 1) { inventoryMatch = priceMatches[0]; matchType = 'price'; }
       }
-      // 3. Name keyword match — need 2+ significant words to match
+      // 3. Name keyword match — flagged as LOW confidence so user must manually approve
+      //    Requires 3+ significant words to match (was 2, tightened to reduce false positives)
       if (!inventoryMatch) {
-        const stopW = new Set(['the','and','for','with','each','unit','per']);
+        const stopW = new Set(['the','and','for','with','each','unit','per','replacement','motor','blower']);
         const words = (item.name||'').toLowerCase().split(/[\s\-\/,]+/).filter(w=>w.length>=3&&!stopW.has(w));
-        if (words.length >= 2) {
+        if (words.length >= 3) {
           const m = parts.find(p => {
             const pn = (p.name||'').toLowerCase();
-            return words.filter(w=>pn.includes(w)).length >= Math.min(2, Math.ceil(words.length*0.5));
+            return words.filter(w=>pn.includes(w)).length >= Math.min(3, Math.ceil(words.length*0.6));
           });
-          if (m) { inventoryMatch = m; matchType = 'name'; }
+          if (m) { inventoryMatch = m; matchType = 'name'; matchConfidence = 'low'; }
         }
       }
 
-      return { ...item, _id:i, _checked:true, _dup: inventoryMatch||null, _matchType: matchType };
+      // Low-confidence (name-only) matches: flag as "needs review", don't auto-restock
+      const isLowConfidence = matchConfidence === 'low';
+      return { ...item, _id:i, _checked:!isLowConfidence, _dup: inventoryMatch||null, _matchType: matchType, _lowConf: isLowConfidence };
     });
     renderReceiptItems();
     document.getElementById('receiptResults').classList.remove('hidden');
@@ -3116,27 +3125,54 @@ window.scanReceipt = async function() {
 function renderReceiptItems() {
   const el=document.getElementById('receiptItemList');
   if (!receiptItems.length) { el.innerHTML='<p style="color:var(--text-muted);font-size:14px">No items found. Try a clearer photo.</p>'; return; }
+
+  // Build location options once for reuse in each match card
+  const locOpts = `<option value="">— Same as above —</option>` +
+    boxes.map(b=>`<option value="${b.id}" data-name="${xss(b.name)}">${xss(b.name)}</option>`).join('');
+
   el.innerHTML = receiptItems.map(item=>{
-    const matchTypeLabel = item._matchType === 'partNumber' ? 'Part # match' : item._matchType === 'price' ? 'Exact price match' : 'Name match';
+    const matchTypeLabel = item._matchType === 'partNumber' ? '✅ Part # match'
+                         : item._matchType === 'price'      ? '✅ Price match'
+                         :                                    '⚠️ Name only — verify!';
+    const matchColor = item._lowConf
+      ? 'rgba(251,191,36,.12);border-color:rgba(251,191,36,.4)'
+      : 'rgba(99,102,241,.1);border-color:rgba(99,102,241,.25)';
+    const matchTextColor = item._lowConf ? 'var(--amber)' : 'var(--accent)';
+
+    // Show side-by-side comparison for matched items so mismatches are obvious
+    const invPn    = item._dup?.partNumber || '—';
+    const invPrice = item._dup?.price ? `$${parseFloat(item._dup.price).toFixed(2)}` : '—';
+    const rcptPn   = item.partNumber || '—';
+    const rcptPrice= `$${(+(item.price||0)).toFixed(2)}`;
+    const pnMismatch    = item._dup && item._matchType !== 'partNumber' && item._dup.partNumber && item.partNumber && item._dup.partNumber.toLowerCase() !== item.partNumber.toLowerCase();
+    const priceMismatch = item._dup && item.price > 0 && item._dup.price && Math.abs(parseFloat(item._dup.price)-parseFloat(item.price)) > 0.50;
+
     return `
     <div class="receipt-item ${item._dup?'dup':''}">
       <input type="checkbox" id="rc_${item._id}" ${item._checked?'checked':''} onchange="toggleReceiptItem(${item._id})" style="margin-top:2px;width:16px;height:16px;cursor:pointer;flex-shrink:0">
       <div class="receipt-item-info" style="flex:1;min-width:0">
-        <div class="receipt-item-name">${xss(item.name||'Unknown Item')} ${item._dup?`<span class="dup-badge">🔗 In Inventory</span>`:''}</div>
+        <div class="receipt-item-name">${xss(item.name||'Unknown Item')} ${item._dup?`<span class="dup-badge">${item._lowConf?'⚠️ Possible match':'🔗 In Inventory'}</span>`:''}</div>
         <div class="receipt-item-meta">
           ${item.partNumber?`Part #: <strong>${xss(item.partNumber)}</strong> · `:''}
           Qty: <strong>${item.quantity||1}</strong> ·
-          Price: <strong>$${(+(item.price||0)).toFixed(2)}</strong>
-          ${item.category?` · ${xss(item.category)}`:''}
+          Price: <strong>${rcptPrice}</strong>
         </div>
         ${item._dup ? `
-        <div style="margin-top:6px;padding:8px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);border-radius:6px;font-size:12px">
-          <div style="color:var(--accent);font-weight:600;margin-bottom:4px">🔗 ${matchTypeLabel} → ${xss(item._dup.name)}</div>
-          <div style="color:var(--text-muted)">Current stock: ${item._dup.quantity||0} · ${xss(item._dup.boxName||'No location')}</div>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button class="btn btn-primary btn-sm" style="flex:1;font-size:11px" onclick="receiptAddToStock(${item._id})">↑ Add to Stock</button>
-            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="receiptDeductExisting(${item._id})">− Deduct</button>
-            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="receiptAddNew(${item._id})">+ New</button>
+        <div style="margin-top:6px;padding:8px;background:${matchColor};border:1px solid;border-radius:6px;font-size:12px">
+          <div style="color:${matchTextColor};font-weight:600;margin-bottom:6px">${matchTypeLabel} → ${xss(item._dup.name)}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;font-size:11px">
+            <div style="color:var(--text-muted)">Receipt part #: <strong style="color:${pnMismatch?'var(--red)':'var(--text)'}">${xss(rcptPn)}</strong></div>
+            <div style="color:var(--text-muted)">Inv part #: <strong style="color:${pnMismatch?'var(--red)':'var(--text)'}">${xss(invPn)}</strong></div>
+            <div style="color:var(--text-muted)">Receipt price: <strong style="color:${priceMismatch?'var(--red)':'var(--text)'}">${rcptPrice}</strong></div>
+            <div style="color:var(--text-muted)">Inv price: <strong style="color:${priceMismatch?'var(--red)':'var(--text)'}">${invPrice}</strong></div>
+          </div>
+          <div style="color:var(--text-muted);margin-bottom:6px">Current stock: <strong>${item._dup.quantity||0}</strong> @ ${xss(item._dup.boxName||'No location')}</div>
+          <div style="margin-bottom:6px">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Stock going to:</label>
+            <select id="rcLoc_${item._id}" class="fselect" style="font-size:11px;padding:4px 8px">${locOpts}</select>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px" onclick="receiptAddNew(${item._id})">+ Add as New Part</button>
           </div>
         </div>` : ''}
       </div>
@@ -3252,12 +3288,21 @@ window.confirmReceiptAdd = async function() {
       if (!part) continue;
       const qty    = parseInt(item.quantity) || 1;
       const newQty = (parseInt(part.quantity) || 0) + qty;
+
+      // Per-item location override: if user selected a specific location for this restock use it,
+      // otherwise fall back to the global receipt location, then to the part's existing location
+      const itemLocSel  = document.getElementById(`rcLoc_${item._id}`);
+      const itemBoxId   = itemLocSel?.value || boxId || part.boxId || null;
+      const itemBoxName = itemBoxId
+        ? (itemLocSel?.value ? (itemLocSel.options[itemLocSel.selectedIndex]?.dataset?.name || null) : (boxName || part.boxName || null))
+        : null;
+
       await updateDoc(coDoc('parts', part.id), { quantity: newQty, updatedAt: serverTimestamp() });
       await addDoc(co('transactions'), {
         type: 'add', partName: part.name, partNumber: part.partNumber || '',
         quantity: qty, source: 'receipt',
         pulledBy: currentUser?.displayName || currentUser?.email || 'Receipt scan',
-        jobRef: 'Receipt restock', locationId: part.boxId || null, locationName: part.boxName || null,
+        jobRef: 'Receipt restock', locationId: itemBoxId, locationName: itemBoxName,
         createdAt: serverTimestamp()
       });
       restocked++;
