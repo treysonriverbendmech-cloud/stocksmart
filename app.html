@@ -1874,6 +1874,23 @@ function relevanceScore(p, tokens) {
   return score;
 }
 
+// ─── Find all copies of a duplicate part ─────────────────────────────────────
+window.findAllDupes = function(partNumber, name) {
+  // Clear all filters so nothing is hidden
+  document.getElementById('catFilter').value = '';
+  document.getElementById('subcatFilter').innerHTML = '<option value="">All Subcategories</option>';
+  const boxSel = document.getElementById('boxFilter');
+  if (boxSel) boxSel.value = '';
+  const boxNumSel = document.getElementById('boxNumFilter');
+  if (boxNumSel) boxNumSel.value = '';
+  // Search by part number if available, otherwise by name
+  const term = partNumber || name;
+  const searchInput = document.getElementById('searchInput');
+  searchInput.value = term;
+  applyFilters();
+  toast(`Showing all copies of "${term}" — delete the unwanted ones`, 'ok');
+};
+
 // ─── Filters ──────────────────────────────────────────────────────────────────
 window.applyFilters = function() {
   const raw    = normalizeNumbers(document.getElementById('searchInput').value.trim().toLowerCase());
@@ -2025,7 +2042,7 @@ function renderGrid() {
             ? `<span class="meta-item">🧊 <strong>${p.quantity||0} lbs</strong>${p.cylinderSize?' / '+p.cylinderSize+' lb cyl':''}</span>`
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
-          ${isDupe?`<span class="low-stock" style="color:#f87171;background:rgba(248,113,113,.15)">⚠ Duplicate</span>`:''}
+          ${isDupe?`<span class="low-stock" style="color:#f87171;background:rgba(248,113,113,.15);cursor:pointer" title="Click to find all copies" onclick="findAllDupes(${JSON.stringify(p.partNumber||'')},${JSON.stringify(p.name||'')})">⚠ Duplicate — tap to find all copies</span>`:''}
           ${showLocBadge?`<span class="meta-item" style="font-size:11px;color:var(--accent);background:rgba(99,102,241,.12);border-radius:100px;padding:1px 7px;font-weight:600">📦 ${locTotal} locations</span>`:''}
           ${box?`<span class="meta-item">📍 ${xss(box.name)}${p.boxNumber?' · '+xss(p.boxNumber):''}</span>`:''}
         </div>
