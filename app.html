@@ -1061,12 +1061,18 @@
           <span id="receiptScanTxt">✦ Scan with AI</span>
         </button>
       </div>
-      <!-- Location selector -->
-      <div style="margin-top:12px">
-        <label class="flabel">Add to Location</label>
-        <select id="receiptLocationSel" class="finput" style="margin-bottom:0">
-          <option value="">— No location —</option>
-        </select>
+      <!-- Location + Box # -->
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label class="flabel">Location</label>
+          <select id="receiptLocationSel" class="finput" style="margin-bottom:0">
+            <option value="">— No location —</option>
+          </select>
+        </div>
+        <div>
+          <label class="flabel">Box # / Shelf</label>
+          <input id="receiptBoxNum" class="finput" type="text" placeholder="e.g. A3, Bin 7" style="margin-bottom:0">
+        </div>
       </div>
 
       <div id="receiptResults" class="hidden" style="margin-top:16px">
@@ -1090,6 +1096,7 @@
       <button class="stab active" onclick="switchReportTab('reorder')">Reorder List</button>
       <button class="stab" onclick="switchReportTab('usage')">Usage Log</button>
       <button class="stab" onclick="switchReportTab('inventory')">Full Inventory</button>
+      <button class="stab" onclick="switchReportTab('receipts')">📋 Receipts</button>
     </div>
     <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -1129,6 +1136,10 @@
         <button class="btn btn-ghost btn-sm" onclick="downloadInventoryCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="invContent"></div>
+    </div>
+    <div class="stab-panel" id="rTabReceipts" style="padding-top:16px">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">All parts added or restocked via receipt scan. Use this to audit what the AI picked up.</div>
+      <div id="receiptsContent"></div>
     </div>
   </div>
 </div>
@@ -1724,7 +1735,7 @@ function startListeners() {
   _unsubHcpPending = onSnapshot(co('hcpPending'), snap => {
     hcpPendingItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
-      .filter(i => i.status === 'pending')
+      .filter(i => !i.status || i.status === 'pending')
       .sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
     updateHCPBadge();
   }, err => console.warn('hcpPending listener:', err));
@@ -1732,7 +1743,7 @@ function startListeners() {
   _unsubHcpUnmatched = onSnapshot(co('hcpUnmatched'), snap => {
     hcpUnmatchedItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
-      .filter(i => i.status === 'pending')
+      .filter(i => !i.status || i.status === 'pending')
       .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
     updateUnmatchedBadge();
   }, err => console.warn('hcpUnmatched listener:', err));
@@ -2677,12 +2688,56 @@ window.switchTab = function(tab) {
 };
 
 window.switchReportTab = function(tab) {
-  const tabs = ['reorder','usage','inventory'];
+  const tabs = ['reorder','usage','inventory','receipts'];
   document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
-  if (tab==='usage') { populateUsageTechFilter(); renderUsageReport(); }
+  if (tab==='usage')     { populateUsageTechFilter(); renderUsageReport(); }
   if (tab==='inventory') { populateInventoryFilters(); renderInventoryReport(); }
+  if (tab==='receipts')  { renderReceiptsReport(); }
 };
+
+function renderReceiptsReport() {
+  const el = document.getElementById('receiptsContent');
+  // Pull all receipt-sourced transactions, newest first
+  const receiptTxns = transactions
+    .filter(t => t.source === 'receipt')
+    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+
+  if (!receiptTxns.length) {
+    el.innerHTML = '<div class="report-empty">No receipts scanned yet.</div>'; return;
+  }
+
+  // Group by date (YYYY-MM-DD)
+  const byDate = {};
+  receiptTxns.forEach(t => {
+    const d = t.createdAt?.seconds
+      ? new Date(t.createdAt.seconds * 1000).toLocaleDateString()
+      : 'Unknown date';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(t);
+  });
+
+  el.innerHTML = Object.entries(byDate).map(([date, items]) => `
+    <div class="report-section">
+      <div class="report-section-title">📅 ${xss(date)}</div>
+      ${items.map(t => {
+        const isRestock = t.jobRef === 'Receipt restock';
+        const badge = isRestock
+          ? `<span class="report-badge-amber">↑ Restock</span>`
+          : `<span style="background:rgba(99,102,241,.15);color:var(--accent);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">+ New</span>`;
+        return `<div class="report-row">
+          <div style="flex:1;min-width:0">
+            <div class="report-row-name">${xss(t.partName||'Unknown')}</div>
+            <div class="report-row-meta">${xss(t.partNumber||'')}${t.locationName ? ' · ' + xss(t.locationName) : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-size:13px;font-weight:600;color:var(--text)">×${t.quantity||1}</span>
+            ${badge}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
 
 function renderCatEditor() {
   const el = document.getElementById('catEditor');
@@ -2955,6 +3010,7 @@ window.openReceipt = function() {
   document.getElementById('receiptScanBtn').disabled=true;
   document.getElementById('receiptScanTxt').textContent='✦ Scan with AI';
   document.getElementById('receiptResults').classList.add('hidden');
+  const rbn = document.getElementById('receiptBoxNum'); if (rbn) rbn.value = '';
 
   // Populate location dropdown
   const sel = document.getElementById('receiptLocationSel');
@@ -3122,41 +3178,68 @@ window.receiptAddNew = function(id) {
 };
 
 window.confirmReceiptAdd = async function() {
-  const toAdd = receiptItems.filter(i=>i._checked && !i._dup);
-  if (!toAdd.length) { toast('No new items to add — use the buttons on matched items','err'); return; }
+  const toAdd     = receiptItems.filter(i => i._checked && !i._dup);
+  const toRestock = receiptItems.filter(i => i._checked && i._dup);
+
+  if (!toAdd.length && !toRestock.length) {
+    toast('No items checked','err'); return;
+  }
 
   // Get selected location
-  const sel = document.getElementById('receiptLocationSel');
-  const boxId   = sel.value || null;
-  const boxName = boxId ? (sel.options[sel.selectedIndex]?.dataset?.name || null) : null;
-  const box     = boxes.find(b=>b.id===boxId);
-  const boxNumber = box?.number || null;
+  const sel       = document.getElementById('receiptLocationSel');
+  const boxId     = sel.value || null;
+  const boxName   = boxId ? (sel.options[sel.selectedIndex]?.dataset?.name || null) : null;
+  const boxNumber = document.getElementById('receiptBoxNum').value.trim() || null;
 
-  let added=0;
+  let added = 0, restocked = 0;
+
+  // Auto-restock matched parts (add scanned qty to existing stock)
+  for (const item of toRestock) {
+    try {
+      const part = parts.find(p => p.id === item._dup.id);
+      if (!part) continue;
+      const qty    = parseInt(item.quantity) || 1;
+      const newQty = (parseInt(part.quantity) || 0) + qty;
+      await updateDoc(coDoc('parts', part.id), { quantity: newQty, updatedAt: serverTimestamp() });
+      await addDoc(co('transactions'), {
+        type: 'add', partName: part.name, partNumber: part.partNumber || '',
+        quantity: qty, source: 'receipt',
+        pulledBy: currentUser?.displayName || currentUser?.email || 'Receipt scan',
+        jobRef: 'Receipt restock', locationId: part.boxId || null, locationName: part.boxName || null,
+        createdAt: serverTimestamp()
+      });
+      restocked++;
+    } catch(e) { console.error(e); }
+  }
+
+  // Add genuinely new parts
   for (const item of toAdd) {
     try {
       const data = {
-        name: item.name||'Unknown Item',
-        partNumber: item.partNumber||genPartNum(),
-        category: item.category||'General',
-        subcategory: item.subcategory||'',
-        price: +(item.price||0),
-        quantity: +(item.quantity||1),
-        minQuantity: 0, keywords: item.keywords||[],
+        name: item.name || 'Unknown Item',
+        partNumber: item.partNumber || genPartNum(),
+        category: item.category || 'General',
+        subcategory: item.subcategory || '',
+        price: +(item.price || 0),
+        quantity: +(item.quantity || 1),
+        minQuantity: 0, keywords: item.keywords || [],
         notes: item.description || item.notes || 'Added via receipt scan',
-        boxId, boxName, boxNumber, photo:null,
+        boxId, boxName, boxNumber, photo: null,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-        source:'receipt'
+        source: 'receipt'
       };
       await addDoc(co('parts'), data);
-      await addDoc(co('transactions'),{
-        type:'add', partName:data.name, partNumber:data.partNumber,
-        quantity:data.quantity, source:'receipt', createdAt:serverTimestamp()
+      await addDoc(co('transactions'), {
+        type: 'add', partName: data.name, partNumber: data.partNumber,
+        quantity: data.quantity, source: 'receipt', createdAt: serverTimestamp()
       });
       added++;
     } catch(e) { console.error(e); }
   }
-  toast(`Added ${added} part${added!==1?'s':''} from receipt!`,'ok');
+
+  const parts_msg  = added     ? `${added} new part${added!==1?'s':''}` : '';
+  const stock_msg  = restocked ? `${restocked} restocked` : '';
+  toast(`Receipt done — ${[parts_msg, stock_msg].filter(Boolean).join(' · ')}`, 'ok');
   closeModal('receiptModal');
 };
 
@@ -3165,6 +3248,7 @@ window.openReports = function() {
   renderReorderList();
   populateUsageTechFilter();
   renderUsageReport();
+  renderReceiptsReport();
   document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',i===0));
   document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
   showModal('reportsModal');
@@ -3692,7 +3776,7 @@ window.runHCPSync = async function() {
         }
       }
 
-      await addDoc(co('hcpPending'), { ...finalItem, createdAt: serverTimestamp() });
+      await addDoc(co('hcpPending'), { ...finalItem, status: 'pending', createdAt: serverTimestamp() });
       // Permanently mark this jobId as processed so clearing hcpPending never causes re-sync
       if (item.jobId) {
         await setDoc(coDoc('hcpSyncedJobs', String(item.jobId)), {
@@ -3775,7 +3859,7 @@ async function loadHCPPending() {
     const snap = await getDocs(co('hcpPending'));
     hcpPendingItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
-      .filter(i => i.status === 'pending')
+      .filter(i => !i.status || i.status === 'pending')
       .sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
     updateHCPBadge();
   } catch(e) { console.warn('loadHCPPending:', e.message); }
@@ -3796,7 +3880,7 @@ async function loadHCPUnmatched() {
     const snap = await getDocs(co('hcpUnmatched'));
     hcpUnmatchedItems = snap.docs
       .map(d => ({ _id: d.id, ...d.data() }))
-      .filter(i => i.status === 'pending')
+      .filter(i => !i.status || i.status === 'pending')
       .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
     updateUnmatchedBadge();
   } catch(e) { console.warn('loadHCPUnmatched:', e.message); }
