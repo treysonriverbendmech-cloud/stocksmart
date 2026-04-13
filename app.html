@@ -1944,23 +1944,65 @@ function renderGrid() {
       ${parts.length===0?'<button class="btn btn-primary" onclick="openAdd()">Add First Part</button>':''}
     </div>`; return;
   }
-  // Pre-compute duplicates — same part# AND same location is a true duplicate
-  // Same part# in DIFFERENT locations is intentional stock splitting, not a duplicate
-  const pnLocCounts = {};
-  parts.forEach(p => { if (p.partNumber) { const k=`${p.partNumber}||${p.boxId||''}`; pnLocCounts[k]=(pnLocCounts[k]||0)+1; } });
+  // Pre-compute duplicates
+  // Rules:
+  //   • Same part# + same location            → duplicate (both flagged)
+  //   • Same part# + either has NO location   → duplicate (unlocated = unplaced, not a second location)
+  //   • Same part# + both have DIFFERENT real locations → intentional split → "N locations" badge
+  //   • Same name  + same location            → duplicate (both flagged)
   const normName2 = s => s.toLowerCase().replace(/[^a-z0-9]/g,'');
-  const nameLocCounts = {};
-  parts.forEach(p => { if (p.name) { const k=normName2(p.name)+'||'+(p.boxId||''); nameLocCounts[k]=(nameLocCounts[k]||0)+1; } });
-  // Count how many distinct locations stock each part number (for "1 of N" badge)
+  const dupeIds = new Set();
+
+  // Group by normalized part number
+  const _pnGroups = {};
+  parts.forEach(p => {
+    if (p.partNumber) {
+      const pn = p.partNumber.trim().toLowerCase();
+      if (!_pnGroups[pn]) _pnGroups[pn] = [];
+      _pnGroups[pn].push({ id: p.id, boxId: p.boxId || '' });
+    }
+  });
+  Object.values(_pnGroups).forEach(items => {
+    if (items.length < 2) return;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        // Flag as duplicate if at the same location OR if either part has no location assigned
+        if (a.boxId === b.boxId || !a.boxId || !b.boxId) {
+          dupeIds.add(a.id); dupeIds.add(b.id);
+        }
+      }
+    }
+  });
+
+  // Group by normalized name + location (same-location name clash)
+  const _nameLocGroups = {};
+  parts.forEach(p => {
+    if (p.name) {
+      const k = normName2(p.name) + '||' + (p.boxId||'');
+      if (!_nameLocGroups[k]) _nameLocGroups[k] = [];
+      _nameLocGroups[k].push(p.id);
+    }
+  });
+  Object.values(_nameLocGroups).forEach(ids => {
+    if (ids.length > 1) ids.forEach(id => dupeIds.add(id));
+  });
+
+  // Count REAL distinct locations per part number (only parts WITH an assigned location)
+  // Unlocated copies are not counted as a "location" — they show as Duplicate instead
   const pnLocationSet = {};
-  parts.forEach(p => { if (p.partNumber) { if (!pnLocationSet[p.partNumber]) pnLocationSet[p.partNumber]=new Set(); pnLocationSet[p.partNumber].add(p.boxId||'none'); } });
+  parts.forEach(p => {
+    if (p.partNumber && p.boxId) {
+      if (!pnLocationSet[p.partNumber]) pnLocationSet[p.partNumber] = new Set();
+      pnLocationSet[p.partNumber].add(p.boxId);
+    }
+  });
 
   grid.innerHTML = filtered.map(p => {
     const catClass = CAT_CLASS[p.category] || 'cat-general';
     const box = boxes.find(b => b.id === p.boxId);
     const isLow = p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity);
-    const isDupe = (p.partNumber && pnLocCounts[`${p.partNumber}||${p.boxId||''}`] > 1)
-               || (p.name && nameLocCounts[normName2(p.name)+'||'+(p.boxId||'')] > 1);
+    const isDupe = dupeIds.has(p.id);
     // "1 of N" — how many locations stock this part number (only show when N > 1 and not a true dupe)
     const locTotal = p.partNumber ? (pnLocationSet[p.partNumber]?.size || 1) : 1;
     const showLocBadge = locTotal > 1 && !isDupe;
