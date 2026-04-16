@@ -1677,6 +1677,7 @@ let filtered    = [];
 let _dupeFilterIds = null; // when set, applyFilters shows only these IDs (duplicate search mode)
 let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'', techs:[] };
 let transactions = [];
+let companyUsers = []; // cached list of approved user displayNames for report filters
 let currentView  = 'grid';
 let photoData    = null;
 let editingId    = null;
@@ -3415,7 +3416,16 @@ window.confirmReceiptAdd = async function() {
 };
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
-window.openReports = function() {
+window.openReports = async function() {
+  // Fetch all approved users so the tech dropdown is always complete
+  try {
+    const snap = await getDocs(co('users'));
+    companyUsers = snap.docs
+      .map(d => d.data())
+      .filter(u => u.status === 'approved')
+      .map(u => (u.displayName || u.email || '').trim())
+      .filter(Boolean);
+  } catch(e) { console.warn('openReports: could not load users', e.message); }
   renderReorderList();
   populateUsageTechFilter();
   renderUsageReport();
@@ -4564,8 +4574,10 @@ function populateUsageTechFilter() {
   const sel=document.getElementById('usageTechFilter');
   const cur=sel.value;
   sel.innerHTML='<option value="">All Techs</option>';
-  // Start with settings.techs as canonical full names
-  const canonical = [...(settings.techs || [])];
+  // Use approved user accounts as canonical full names; fall back to settings.techs
+  const canonical = companyUsers.length
+    ? [...companyUsers]
+    : [...(settings.techs || [])];
   // Add txn names only if NOT already covered by a canonical name (first-name match)
   const txnTechs = [...new Set(
     transactions
@@ -4580,7 +4592,7 @@ function populateUsageTechFilter() {
     );
     if (!covered) canonical.push(txnName);
   });
-  canonical.sort().forEach(t=>{
+  [...new Set(canonical)].sort().forEach(t=>{
     const o=document.createElement('option'); o.value=o.textContent=t;
     if(t===cur) o.selected=true;
     sel.appendChild(o);
