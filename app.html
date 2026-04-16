@@ -1941,13 +1941,25 @@ window.findAllDupes = function(partNumber, name) {
 
   if (!normPN && !normName) { toast('Could not identify part — try searching manually', 'err'); return; }
 
-  // Collect every part that shares this part number OR this normalized name
-  // regardless of category, location, or search — catches copies with no PN
+  // Helper: two PNs are "similar" if one is a prefix/suffix of the other (≥4 chars shared)
+  const isSimilarPN = (a, b) => {
+    if (!a || !b || a === b) return false;
+    const shorter = a.length <= b.length ? a : b;
+    const longer  = a.length <= b.length ? b : a;
+    return shorter.length >= 4 && (longer.startsWith(shorter) || longer.endsWith(shorter));
+  };
+
+  // Collect every part that:
+  //   - exactly matches the part number, OR
+  //   - has a similar part number (prefix/suffix variant like 61445 vs M61445), OR
+  //   - exactly matches the normalized name (catches copies with no PN)
   _dupeFilterIds = new Set(
-    parts.filter(p =>
-      (normPN   && p.partNumber && p.partNumber.trim().toLowerCase() === normPN) ||
-      (normName && p.name       && normStr(p.name) === normName)
-    ).map(p => p.id)
+    parts.filter(p => {
+      const pPN = p.partNumber ? p.partNumber.trim().toLowerCase() : null;
+      if (normPN && pPN && (pPN === normPN || isSimilarPN(pPN, normPN))) return true;
+      if (normName && p.name && normStr(p.name) === normName) return true;
+      return false;
+    }).map(p => p.id)
   );
 
   // Reset all UI filters so nothing is masked
