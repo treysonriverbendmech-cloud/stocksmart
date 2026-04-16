@@ -4564,15 +4564,23 @@ function populateUsageTechFilter() {
   const sel=document.getElementById('usageTechFilter');
   const cur=sel.value;
   sel.innerHTML='<option value="">All Techs</option>';
-  // Build list from actual transaction data so HCP-synced names always appear,
-  // then merge in settings.techs for manually configured names. Deduplicate.
+  // Start with settings.techs as canonical full names
+  const canonical = [...(settings.techs || [])];
+  // Add txn names only if NOT already covered by a canonical name (first-name match)
   const txnTechs = [...new Set(
     transactions
       .filter(t => t.pulledBy && t.pulledBy !== 'Unknown')
       .map(t => t.pulledBy)
   )];
-  const allTechs = [...new Set([...txnTechs, ...settings.techs])].sort();
-  allTechs.forEach(t=>{
+  txnTechs.forEach(txnName => {
+    const txnFirst = txnName.split(' ')[0].toLowerCase();
+    const covered = canonical.some(c =>
+      c.toLowerCase() === txnName.toLowerCase() ||
+      c.split(' ')[0].toLowerCase() === txnFirst
+    );
+    if (!covered) canonical.push(txnName);
+  });
+  canonical.sort().forEach(t=>{
     const o=document.createElement('option'); o.value=o.textContent=t;
     if(t===cur) o.selected=true;
     sel.appendChild(o);
@@ -4596,7 +4604,15 @@ window.renderUsageReport = async function() {
   const dateFrom   = document.getElementById('usageDateFrom')?.value;
   const dateTo     = document.getElementById('usageDateTo')?.value;
   let useTxns = transactions.filter(t=>t.type==='use');
-  if (techFilter) useTxns = useTxns.filter(t=>t.pulledBy===techFilter);
+  if (techFilter) {
+    const filterFirst = techFilter.split(' ')[0].toLowerCase();
+    useTxns = useTxns.filter(t => {
+      if (!t.pulledBy) return false;
+      if (t.pulledBy === techFilter) return true;
+      // Also match first-name-only entries (e.g. "Brooke" matches "Brooke Davis")
+      return t.pulledBy.split(' ')[0].toLowerCase() === filterFirst;
+    });
+  }
   if (locFilter)  useTxns = useTxns.filter(t=>t.locationName===locFilter);
   if (dateFrom) {
     const from = new Date(dateFrom+'T00:00:00');
