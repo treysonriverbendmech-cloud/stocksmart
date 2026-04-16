@@ -181,6 +181,9 @@
     .finput:focus, .fselect:focus, .ftextarea:focus { outline: none; border-color: var(--accent); }
     .ftextarea { resize: vertical; min-height: 80px; font-family: inherit; }
     .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    #fNonStock:checked + #fNonStockTrack { background: var(--accent); border-color: var(--accent); }
+    #fNonStockTrack::after { content:''; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.2s; }
+    #fNonStock:checked + #fNonStockTrack::after { left:calc(100% - 19px); }
     .frow3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     .form-section { display: flex; flex-direction: column; gap: 14px; }
     .part-num-badge { font-size: 11px; color: var(--text-muted); background: var(--surface3); border: 1px solid var(--border); padding: 3px 10px; border-radius: 100px; font-weight: 600; letter-spacing: 0.04em; cursor: text; transition: border-color .15s; }
@@ -785,6 +788,18 @@
       <div class="fgroup">
         <label class="flabel">Notes <span class="ai-pill">✦ AI</span></label>
         <textarea id="fNotes" class="ftextarea" placeholder="Condition, model number, compatible units…"></textarea>
+      </div>
+      <!-- Non-stock toggle -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">Non-stock item</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Tools, equipment & assets — hides from reorder report</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0">
+          <input type="checkbox" id="fNonStock" style="opacity:0;width:0;height:0">
+          <span onclick="document.getElementById('fNonStock').click()" style="position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:100px;transition:.2s;border:1px solid var(--border)"
+            id="fNonStockTrack"></span>
+        </label>
       </div>
       <!-- Actions -->
       <div style="display:flex;gap:10px;margin-top:4px">
@@ -2140,6 +2155,7 @@ function renderGrid() {
             ? `<span class="meta-item">🧊 <strong>${p.quantity||0} lbs</strong>${p.cylinderSize?' / '+p.cylinderSize+' lb cyl':''}</span>`
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
+          ${p.nonStock?`<span class="low-stock" style="color:var(--text-muted);background:var(--surface3)">🔧 Non-stock</span>`:''}
           ${isDupe?`<span class="low-stock find-dupes-btn" style="color:#f87171;background:rgba(248,113,113,.15);cursor:pointer" title="Tap to find all copies" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Duplicate — tap to find all</span>`:''}
           ${isSoftDupe?`<span class="low-stock find-dupes-btn" style="color:var(--amber);background:rgba(251,191,36,.12);cursor:pointer" title="Similar part number found — tap to compare" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Similar PN — tap to compare</span>`:''}
           ${showLocBadge?`<span class="meta-item" style="font-size:11px;color:var(--accent);background:rgba(99,102,241,.12);border-radius:100px;padding:1px 7px;font-weight:600">📦 ${locTotal} locations</span>`:''}
@@ -2280,6 +2296,7 @@ window.openAdd = function(id=null) {
       document.getElementById('fMinQty'  ).value = p.minQuantity || '';
       document.getElementById('fKeywords').value = (p.keywords||[]).join(', ');
       document.getElementById('fNotes'   ).value = p.notes     || '';
+      document.getElementById('fNonStock').checked = p.nonStock || false;
       document.getElementById('partNumDisplay').textContent = p.partNumber || '';
       updateSubcatOptions(p.category);
       document.getElementById('fSubcat').value = p.subcategory || '';
@@ -2301,6 +2318,7 @@ window.openAdd = function(id=null) {
 
 function resetForm() {
   ['fName','fPrice','fKeywords','fNotes'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('fNonStock').checked = false;
   document.getElementById('fCat').value='';
   document.getElementById('fSubcat').innerHTML='<option value="">Select subcategory…</option>';
   document.getElementById('fQty').value='1';
@@ -2468,6 +2486,7 @@ window.saveItem = async function() {
     boxName:       box ? box.name : null,
     boxNumber:     boxNumber || null,
     notes:         document.getElementById('fNotes').value.trim(),
+    nonStock:      document.getElementById('fNonStock').checked || false,
     photo:         photoData || null,
     trackUnit:     trackUnit || null,
     containerSize: trackUnit ? cylSize : null,
@@ -3563,8 +3582,9 @@ window.openReports = async function() {
 
 function renderReorderList() {
   const el=document.getElementById('reorderContent');
-  const low = parts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
-  const out  = parts.filter(p=>(parseInt(p.quantity)||0)===0);
+  const stockParts = parts.filter(p => !p.nonStock);
+  const low = stockParts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
+  const out  = stockParts.filter(p=>(parseInt(p.quantity)||0)===0);
   if (!low.length && !out.length) {
     el.innerHTML='<div class="report-empty">✅ All parts are sufficiently stocked!</div>'; return;
   }
