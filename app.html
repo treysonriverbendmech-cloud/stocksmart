@@ -3296,6 +3296,9 @@ window.scanReceipt = async function() {
     }
     receiptItems = (json.items||[]).map((item,i) => {
       // Try to find an existing inventory match (part# → price → name keywords)
+      // Non-stock items (tools, equipment, assets) are excluded from matching — they
+      // aren't consumables and shouldn't be restocked via receipt scan.
+      const stockParts = parts.filter(p => !p.nonStock);
       let inventoryMatch = null;
       let matchType = null;
 
@@ -3307,12 +3310,12 @@ window.scanReceipt = async function() {
 
       // 1. Part number exact match (most reliable)
       if (item.partNumber) {
-        const m = parts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
+        const m = stockParts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
         if (m) { inventoryMatch = m; matchType = 'partNumber'; }
       }
       // 2. Exact price match — only if unique AND price is non-trivial (>$1 avoids false hits on cheap fittings)
       if (!inventoryMatch && item.price > 1) {
-        const priceMatches = parts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
+        const priceMatches = stockParts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
         if (priceMatches.length === 1) { inventoryMatch = priceMatches[0]; matchType = 'price'; }
       }
       // 3. Name keyword match — flagged as LOW confidence so user must manually approve
@@ -3321,7 +3324,7 @@ window.scanReceipt = async function() {
         const stopW = new Set(['the','and','for','with','each','unit','per','replacement','motor','blower']);
         const words = (item.name||'').toLowerCase().split(/[\s\-\/,]+/).filter(w=>w.length>=3&&!stopW.has(w));
         if (words.length >= 3) {
-          const m = parts.find(p => {
+          const m = stockParts.find(p => {
             const pn = (p.name||'').toLowerCase();
             return words.filter(w=>pn.includes(w)).length >= Math.min(3, Math.ceil(words.length*0.6));
           });
@@ -4481,12 +4484,14 @@ window.manualMatch = function(id) {
 window.filterMatchList = function(id) {
   const q = (document.getElementById('manualMatchSearch_'+id)?.value || '').toLowerCase().trim();
   const listEl = document.getElementById('manualMatchList_'+id); if (!listEl) return;
+  // Exclude non-stock items — tools/assets aren't deducted on HCP jobs
+  const stockParts = parts.filter(p => !p.nonStock);
   const filtered = q
-    ? parts.filter(p =>
+    ? stockParts.filter(p =>
         (p.name||'').toLowerCase().includes(q) ||
         (p.partNumber||'').toLowerCase().includes(q) ||
         (p.boxName||'').toLowerCase().includes(q))
-    : parts;
+    : stockParts;
   if (!filtered.length) {
     listEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted)">No parts found</div>';
     return;
