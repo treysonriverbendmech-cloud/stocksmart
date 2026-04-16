@@ -4321,16 +4321,56 @@ window.manualMatch = function(id) {
   const item = hcpUnmatchedItems.find(i=>i._id===id); if(!item) return;
   const resultEl = document.getElementById('aiResult_'+id);
   resultEl.style.display = '';
-  const opts = parts.map(p=>`<option value="${p.id}">${xss(p.name)}${p.partNumber?' ('+p.partNumber+')':''}${p.boxName?' — '+p.boxName:''}</option>`).join('');
   resultEl.innerHTML = `
     <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">Select the matching inventory part:</div>
-    <select id="manualMatchSel_${id}" class="fselect" style="width:100%;margin-bottom:8px;font-size:13px">
-      <option value="">Choose a part…</option>${opts}
-    </select>
+    <input id="manualMatchSearch_${id}" class="finput" placeholder="Search by name or part #…" autocomplete="off"
+      style="width:100%;margin-bottom:4px;font-size:13px;box-sizing:border-box"
+      oninput="filterMatchList('${id}')">
+    <div id="manualMatchList_${id}"
+      style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface2)">
+    </div>
+    <input type="hidden" id="manualMatchSel_${id}" value="">
     <div style="display:flex;gap:8px">
       <button class="btn btn-success btn-sm" style="flex:2" onclick="approveManualMatch('${id}')">✓ Confirm & Deduct</button>
       <button class="btn btn-ghost btn-sm" style="flex:1" onclick="document.getElementById('aiResult_${id}').style.display='none'">Cancel</button>
     </div>`;
+  filterMatchList(id); // populate full list immediately
+  document.getElementById('manualMatchSearch_'+id)?.focus();
+};
+
+window.filterMatchList = function(id) {
+  const q = (document.getElementById('manualMatchSearch_'+id)?.value || '').toLowerCase().trim();
+  const listEl = document.getElementById('manualMatchList_'+id); if (!listEl) return;
+  const filtered = q
+    ? parts.filter(p =>
+        (p.name||'').toLowerCase().includes(q) ||
+        (p.partNumber||'').toLowerCase().includes(q) ||
+        (p.boxName||'').toLowerCase().includes(q))
+    : parts;
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted)">No parts found</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(p => {
+    const label = `${xss(p.name)}${p.partNumber?' <span style="color:var(--text-muted);font-size:11px">('+xss(p.partNumber)+')</span>':''}${p.boxName?' <span style="color:var(--text-muted);font-size:11px">— '+xss(p.boxName)+'</span>':''}`;
+    return `<div data-pid="${p.id}" onclick="selectMatchPart('${id}','${p.id}',this)"
+      style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;line-height:1.4"
+      onmouseenter="this.style.background='var(--surface3)'" onmouseleave="this.style.background=this.classList.contains('selected-match')?'var(--purple-dim)':''">
+      ${label}
+    </div>`;
+  }).join('');
+};
+
+window.selectMatchPart = function(id, partId, el) {
+  document.getElementById('manualMatchSel_'+id).value = partId;
+  // Highlight selected row
+  const listEl = document.getElementById('manualMatchList_'+id);
+  listEl.querySelectorAll('div[data-pid]').forEach(d => {
+    d.classList.remove('selected-match');
+    d.style.background = '';
+  });
+  el.classList.add('selected-match');
+  el.style.background = 'var(--purple-dim, rgba(139,92,246,.2))';
 };
 
 window.approveManualMatch = async function(id) {
