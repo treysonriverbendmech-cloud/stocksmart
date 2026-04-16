@@ -1190,6 +1190,7 @@
         <label class="flabel">Notes <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
         <input id="xfrNotes" class="finput" type="text" placeholder="Job # or reason for transfer">
       </div>
+      <div id="xfrRestrictionNotice" style="display:none;font-size:12px;color:var(--amber);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:8px 10px"></div>
       <p style="font-size:12px;color:var(--text-muted)">Deducts from source location and adds to destination. If the part already exists there, qty is added to it.</p>
       <div style="display:flex;gap:10px;margin-top:4px">
         <button class="btn btn-ghost" style="flex:1" onclick="closeModal('transferModal')">Cancel</button>
@@ -2870,11 +2871,20 @@ function renderBoxList() {
     ? '<p style="color:var(--text-muted);font-size:14px">No locations yet. Add one below.</p>'
     : boxes.map(b=>`<div class="box-item">
         <div class="box-item-info">
-          <div class="box-item-name">📍 ${xss(b.name)}</div>
+          <div class="box-item-name">${b.personal?'🚐':'📍'} ${xss(b.name)}</div>
+          <div class="box-item-loc" style="font-size:11px;color:var(--text-muted)">${b.personal?'Personal (Van/Truck) — transfer restriction applies':'Shared location'}</div>
         </div>
+        <button class="btn btn-ghost btn-sm" title="${b.personal?'Mark as shared':'Mark as personal van/truck'}" onclick="toggleBoxPersonal('${b.id}',${!b.personal})" style="font-size:11px;white-space:nowrap">${b.personal?'🔓 Shared':'🚐 Van'}</button>
         <button class="btn btn-danger btn-sm" onclick="deleteBox('${b.id}')">Delete</button>
       </div>`).join('');
 }
+
+window.toggleBoxPersonal = async function(id, makePersonal) {
+  try {
+    await updateDoc(coDoc('boxes', id), { personal: makePersonal });
+    toast(makePersonal ? 'Marked as personal van/truck' : 'Marked as shared location', 'ok');
+  } catch(e) { toast('Failed: '+e.message, 'err'); }
+};
 
 window.addBox = async function() {
   const name = document.getElementById('newBoxName').value.trim();
@@ -4372,6 +4382,19 @@ window.openTransferForPart = function(partId) {
 };
 
 window.openTransfer = function() {
+  const isAdmin    = currentUserData?.role === 'admin' || currentUserData?.role === 'owner';
+  const myLocId    = currentUserData?.locationId || null;
+
+  // Which locations can this user transfer FROM?
+  // - Admins: anywhere
+  // - Everyone else: their own personal location + all non-personal (shared) locations
+  // Personal vans of OTHER techs are locked — they must initiate their own transfers
+  const canTransferFrom = (box) => {
+    if (isAdmin) return true;
+    if (!box.personal) return true;          // shared location: open to all
+    return box.id === myLocId;               // personal van: only the owner
+  };
+
   // Populate part select (sorted by name)
   const pSel = document.getElementById('xfrPart');
   pSel.innerHTML = '<option value="">Select part…</option>';
@@ -4382,14 +4405,39 @@ window.openTransfer = function() {
     o.textContent = `${p.name}  (Qty: ${p.quantity||0}${loc?' · '+loc.name:''})`;
     pSel.appendChild(o);
   });
-  // Populate location selects
-  ['xfrFrom','xfrTo'].forEach(id => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = '<option value="">Select location…</option>';
-    boxes.forEach(b => {
-      const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; sel.appendChild(o);
-    });
+
+  // From: restricted by canTransferFrom rule
+  const fromSel = document.getElementById('xfrFrom');
+  fromSel.innerHTML = '<option value="">Select location…</option>';
+  boxes.forEach(b => {
+    if (!canTransferFrom(b)) return; // hide other techs' vans
+    const o = document.createElement('option');
+    o.value = b.id;
+    o.textContent = b.personal ? `🚐 ${b.name}` : `📍 ${b.name}`;
+    fromSel.appendChild(o);
   });
+
+  // To: all locations
+  const toSel = document.getElementById('xfrTo');
+  toSel.innerHTML = '<option value="">Select location…</option>';
+  boxes.forEach(b => {
+    const o = document.createElement('option');
+    o.value = b.id;
+    o.textContent = b.personal ? `🚐 ${b.name}` : `📍 ${b.name}`;
+    toSel.appendChild(o);
+  });
+
+  // Show restriction notice for non-admins
+  const notice = document.getElementById('xfrRestrictionNotice');
+  if (notice) {
+    const lockedVans = boxes.filter(b => b.personal && b.id !== myLocId);
+    if (!isAdmin && lockedVans.length > 0) {
+      notice.style.display = '';
+      notice.textContent = `🔒 ${lockedVans.map(b=>b.name).join(', ')} ${lockedVans.length===1?'is':'are'} locked — only that tech can initiate transfers from their van.`;
+    } else {
+      notice.style.display = 'none';
+    }
+  }
   // Populate tech select
   const tSel = document.getElementById('xfrTech');
   tSel.innerHTML = '<option value="">Select tech…</option>';
@@ -4450,6 +4498,17 @@ window.confirmTransfer = async function() {
   if (fromId === toId) { toast('From and To locations must be different','err'); return; }
   if (!tech)      { toast('Select who is doing the transfer','err'); return; }
   if (xfrQty < 1) { toast('Qty must be at least 1','err'); return; }
+
+  // ── Transfer restriction: personal vans can only be pulled from by their owner ──
+  const isAdmin = currentUserData?.role === 'admin' || currentUserData?.role === 'owner';
+  if (!isAdmin) {
+    const fromBox = boxes.find(b => b.id === fromId);
+    if (fromBox?.personal && fromBox.id !== (currentUserData?.locationId || null)) {
+      toast(`Only the owner of ${fromBox.name} can initiate transfers from it`, 'err');
+      return;
+    }
+  }
+
   const p = parts.find(i=>i.id===partId); if(!p) return;
   const srcQty = p.quantity || 0;
   if (xfrQty > srcQty) { toast(`Only ${srcQty} available at source`,'err'); return; }
