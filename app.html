@@ -2565,6 +2565,44 @@ window.openDetail = function(id) {
       </div>`:''}
       ${kws?`<div><div class="dfield-label">Keywords</div><div class="tag-list" style="margin-top:4px">${kws}</div></div>`:''}
       ${p.notes?`<div><div class="dfield-label">Notes</div><div class="dfield-val" style="line-height:1.6">${xss(p.notes)}</div></div>`:''}
+      ${(()=>{
+        const src = p.source === 'receipt' ? '📋 Added via receipt scan'
+                  : p.source === 'hcp'     ? '🔗 Added via HCP sync'
+                  :                          '✏️ Added manually';
+        const addedDate = p.createdAt?.seconds
+          ? new Date(p.createdAt.seconds*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+          : null;
+        const updDate = p.updatedAt?.seconds
+          ? new Date(p.updatedAt.seconds*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+          : null;
+        return `<div style="margin-top:4px;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:6px 14px">
+          <span>${src}</span>
+          ${addedDate?`<span>Created: ${addedDate}</span>`:''}
+          ${updDate&&updDate!==addedDate?`<span>Updated: ${updDate}</span>`:''}
+        </div>`;
+      })()}
+      <div>
+        <div class="dfield-label" style="margin-bottom:6px">Recent History</div>
+        <div id="detailHistory" style="display:flex;flex-direction:column;gap:4px;font-size:12px;max-height:140px;overflow-y:auto">
+          ${(()=>{
+            const partTxns = transactions
+              .filter(t => t.partId === id || t.partName === p.name)
+              .slice(0, 8);
+            if (!partTxns.length) return `<span style="color:var(--text-muted)">No transactions recorded.</span>`;
+            return partTxns.map(t => {
+              const d = t.createdAt?.seconds ? new Date(t.createdAt.seconds*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+              const icon = t.type==='use'?'🔽':'🔼';
+              const who  = t.pulledBy ? ` · ${xss(t.pulledBy)}` : '';
+              const job  = t.jobRef   ? ` · ${xss(t.jobRef)}`   : '';
+              const src  = t.source==='receipt'?' · Receipt scan':t.source==='hcp'?' · HCP':'';
+              return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:var(--surface2);border-radius:5px">
+                <span>${icon} ${t.type==='use'?'Used':'Added'} ×${t.quantity||1}${who}${job}${src}</span>
+                <span style="color:var(--text-muted);flex-shrink:0;margin-left:8px">${d}</span>
+              </div>`;
+            }).join('');
+          })()}
+        </div>
+      </div>
     </div>
     <div class="detail-actions">
       ${(()=>{ const pu=p.trackUnit||(p.isRefrigerant?'lbs':null); const e=pu==='lbs'?'🧊':pu==='oz'?'🧪':''; return `
