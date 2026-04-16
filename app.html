@@ -1145,13 +1145,21 @@
       <div id="usageContent"></div>
     </div>
     <div class="stab-panel" id="rTabInventory" style="padding-top:16px">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <select id="invLocFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderInventoryReport()">
           <option value="">All Locations</option>
         </select>
-        <select id="invCatFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderInventoryReport()">
+        <select id="invBoxNumFilter" class="filter-sel" style="flex:1;min-width:100px" onchange="renderInventoryReport()">
+          <option value="">All Box #</option>
+        </select>
+        <select id="invCatFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="updateInvSubcatOptions();renderInventoryReport()">
           <option value="">All Categories</option>
         </select>
+        <select id="invSubcatFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderInventoryReport()">
+          <option value="">All Subcategories</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <select id="invSortBy" class="filter-sel" style="flex:1;min-width:140px" onchange="renderInventoryReport()">
           <option value="location">Sort: Location</option>
           <option value="category">Sort: Category</option>
@@ -5011,32 +5019,64 @@ window.downloadUsageCSV = function() {
 
 // ─── Full Inventory Report ────────────────────────────────────────────────────
 function populateInventoryFilters() {
-  const locSel = document.getElementById('invLocFilter');
-  const catSel = document.getElementById('invCatFilter');
-  const curLoc = locSel.value, curCat = catSel.value;
-  locSel.innerHTML = '<option value="">All Locations</option>';
-  catSel.innerHTML = '<option value="">All Categories</option>';
+  const locSel    = document.getElementById('invLocFilter');
+  const boxNumSel = document.getElementById('invBoxNumFilter');
+  const catSel    = document.getElementById('invCatFilter');
+  const curLoc    = locSel.value, curCat = catSel.value, curBoxNum = boxNumSel.value;
+
+  locSel.innerHTML    = '<option value="">All Locations</option>';
+  boxNumSel.innerHTML = '<option value="">All Box #</option>';
+  catSel.innerHTML    = '<option value="">All Categories</option>';
+
   boxes.forEach(b => {
     const o = document.createElement('option'); o.value = b.name; o.textContent = b.name;
     if (b.name === curLoc) o.selected = true;
     locSel.appendChild(o);
   });
+
+  // Box # — pull unique non-empty boxNumber values from parts
+  const boxNums = [...new Set(parts.map(p=>p.boxNumber).filter(Boolean))].sort();
+  boxNums.forEach(n => {
+    const o = document.createElement('option'); o.value = n; o.textContent = n;
+    if (n === curBoxNum) o.selected = true;
+    boxNumSel.appendChild(o);
+  });
+
   const cats = [...new Set(parts.map(p=>p.category).filter(Boolean))].sort();
   cats.forEach(c => {
     const o = document.createElement('option'); o.value = c; o.textContent = c;
     if (c === curCat) o.selected = true;
     catSel.appendChild(o);
   });
+  updateInvSubcatOptions();
 }
+
+window.updateInvSubcatOptions = function() {
+  const cat = document.getElementById('invCatFilter')?.value || '';
+  const sel = document.getElementById('invSubcatFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Subcategories</option>';
+  if (cat && settings.subcategories[cat]) {
+    settings.subcategories[cat].forEach(s => {
+      const o = document.createElement('option'); o.value = o.textContent = s;
+      if (s === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+};
 
 window.renderInventoryReport = function() {
   const el = document.getElementById('invContent');
-  const locFilter = document.getElementById('invLocFilter')?.value || '';
-  const catFilter = document.getElementById('invCatFilter')?.value || '';
-  const sortBy    = document.getElementById('invSortBy')?.value || 'location';
+  const locFilter    = document.getElementById('invLocFilter')?.value    || '';
+  const boxNumFilter = document.getElementById('invBoxNumFilter')?.value || '';
+  const catFilter    = document.getElementById('invCatFilter')?.value    || '';
+  const subcatFilter = document.getElementById('invSubcatFilter')?.value || '';
+  const sortBy       = document.getElementById('invSortBy')?.value       || 'location';
   let filtered = [...parts];
-  if (locFilter) filtered = filtered.filter(p => (p.boxName||'') === locFilter);
-  if (catFilter) filtered = filtered.filter(p => (p.category||'') === catFilter);
+  if (locFilter)    filtered = filtered.filter(p => (p.boxName||'')   === locFilter);
+  if (boxNumFilter) filtered = filtered.filter(p => (p.boxNumber||'') === boxNumFilter);
+  if (catFilter)    filtered = filtered.filter(p => (p.category||'')  === catFilter);
+  if (subcatFilter) filtered = filtered.filter(p => (p.subcategory||'') === subcatFilter);
   if (!filtered.length) {
     el.innerHTML = '<div class="report-empty">No parts match the current filters.</div>'; return;
   }
@@ -5095,12 +5135,16 @@ window.renderInventoryReport = function() {
 };
 
 window.downloadInventoryCSV = function() {
-  const locFilter = document.getElementById('invLocFilter')?.value || '';
-  const catFilter = document.getElementById('invCatFilter')?.value || '';
-  const sortBy    = document.getElementById('invSortBy')?.value || 'location';
+  const locFilter    = document.getElementById('invLocFilter')?.value    || '';
+  const boxNumFilter = document.getElementById('invBoxNumFilter')?.value || '';
+  const catFilter    = document.getElementById('invCatFilter')?.value    || '';
+  const subcatFilter = document.getElementById('invSubcatFilter')?.value || '';
+  const sortBy       = document.getElementById('invSortBy')?.value       || 'location';
   let filtered = [...parts];
-  if (locFilter) filtered = filtered.filter(p => (p.boxName||'') === locFilter);
-  if (catFilter) filtered = filtered.filter(p => (p.category||'') === catFilter);
+  if (locFilter)    filtered = filtered.filter(p => (p.boxName||'')     === locFilter);
+  if (boxNumFilter) filtered = filtered.filter(p => (p.boxNumber||'')   === boxNumFilter);
+  if (catFilter)    filtered = filtered.filter(p => (p.category||'')    === catFilter);
+  if (subcatFilter) filtered = filtered.filter(p => (p.subcategory||'') === subcatFilter);
   filtered.sort((a,b) => {
     if (sortBy==='location') return (a.boxName||'').localeCompare(b.boxName||'') || (a.name||'').localeCompare(b.name||'');
     if (sortBy==='category') return (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||'');
