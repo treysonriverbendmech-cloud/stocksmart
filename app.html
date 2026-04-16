@@ -1107,7 +1107,7 @@
       <div id="reorderContent"></div>
     </div>
     <div class="stab-panel" id="rTabUsage" style="padding-top:16px">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <select id="usageTechFilter" class="filter-sel" style="flex:1;min-width:120px" onchange="renderUsageReport()">
           <option value="">All Techs</option>
         </select>
@@ -1116,6 +1116,14 @@
         </select>
         <input type="date" id="usageDateFrom" class="finput" style="flex:1;min-width:120px" onchange="renderUsageReport()" title="From date">
         <input type="date" id="usageDateTo" class="finput" style="flex:1;min-width:120px" onchange="renderUsageReport()" title="To date">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <select id="usageCatFilter" class="filter-sel" style="flex:1;min-width:140px" onchange="updateUsageSubcatOptions();renderUsageReport()">
+          <option value="">All Categories</option>
+        </select>
+        <select id="usageSubcatFilter" class="filter-sel" style="flex:1;min-width:140px" onchange="renderUsageReport()">
+          <option value="">All Subcategories</option>
+        </select>
         <button class="btn btn-ghost btn-sm" onclick="downloadUsageCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="usageContent"></div>
@@ -2717,6 +2725,7 @@ window.confirmQty = async function() {
         partId, partName: p.name, partNumber: p.partNumber||'',
         type:'use', quantity: qtyDelta, pulledBy, jobRef: jobRef||null,
         locationId: p.boxId||null, locationName: p.boxName||null,
+        category: p.category||'', subcategory: p.subcategory||'',
         createdAt: serverTimestamp()
       });
       const uLbl = pUnit ? ` ${pUnit}` : '';
@@ -4606,26 +4615,67 @@ function populateUsageTechFilter() {
     if (b.name === curLoc) o.selected = true;
     locSel.appendChild(o);
   });
+
+  // Populate category dropdown from settings
+  const catSel = document.getElementById('usageCatFilter');
+  const curCat = catSel.value;
+  catSel.innerHTML = '<option value="">All Categories</option>';
+  Object.keys(settings.subcategories).sort().forEach(cat => {
+    const o = document.createElement('option'); o.value = o.textContent = cat;
+    if (cat === curCat) o.selected = true;
+    catSel.appendChild(o);
+  });
+  updateUsageSubcatOptions();
 }
+
+window.updateUsageSubcatOptions = function() {
+  const cat = document.getElementById('usageCatFilter')?.value || '';
+  const subcatSel = document.getElementById('usageSubcatFilter');
+  const curSub = subcatSel.value;
+  subcatSel.innerHTML = '<option value="">All Subcategories</option>';
+  if (cat && settings.subcategories[cat]) {
+    settings.subcategories[cat].forEach(s => {
+      const o = document.createElement('option'); o.value = o.textContent = s;
+      if (s === curSub) o.selected = true;
+      subcatSel.appendChild(o);
+    });
+  }
+};
 
 window.renderUsageReport = async function() {
   const el=document.getElementById('usageContent');
   el.innerHTML='<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
-  const techFilter = document.getElementById('usageTechFilter')?.value||'';
-  const locFilter  = document.getElementById('usageLocFilter')?.value||'';
-  const dateFrom   = document.getElementById('usageDateFrom')?.value;
-  const dateTo     = document.getElementById('usageDateTo')?.value;
+  const techFilter   = document.getElementById('usageTechFilter')?.value||'';
+  const locFilter    = document.getElementById('usageLocFilter')?.value||'';
+  const catFilter    = document.getElementById('usageCatFilter')?.value||'';
+  const subcatFilter = document.getElementById('usageSubcatFilter')?.value||'';
+  const dateFrom     = document.getElementById('usageDateFrom')?.value;
+  const dateTo       = document.getElementById('usageDateTo')?.value;
+  // Build partId → {category, subcategory} lookup for older txns that predate the field
+  const partLookup = {};
+  parts.forEach(p => { partLookup[p.id] = { category: p.category||'', subcategory: p.subcategory||'' }; });
   let useTxns = transactions.filter(t=>t.type==='use');
   if (techFilter) {
     const filterFirst = techFilter.split(' ')[0].toLowerCase();
     useTxns = useTxns.filter(t => {
       if (!t.pulledBy) return false;
       if (t.pulledBy === techFilter) return true;
-      // Also match first-name-only entries (e.g. "Brooke" matches "Brooke Davis")
       return t.pulledBy.split(' ')[0].toLowerCase() === filterFirst;
     });
   }
-  if (locFilter)  useTxns = useTxns.filter(t=>t.locationName===locFilter);
+  if (locFilter)    useTxns = useTxns.filter(t=>t.locationName===locFilter);
+  if (catFilter) {
+    useTxns = useTxns.filter(t => {
+      const cat = t.category || partLookup[t.partId]?.category || '';
+      return cat === catFilter;
+    });
+  }
+  if (subcatFilter) {
+    useTxns = useTxns.filter(t => {
+      const sub = t.subcategory || partLookup[t.partId]?.subcategory || '';
+      return sub === subcatFilter;
+    });
+  }
   if (dateFrom) {
     const from = new Date(dateFrom+'T00:00:00');
     useTxns = useTxns.filter(t=>{ const d=t.createdAt?.toDate?.(); return d&&d>=from; });
