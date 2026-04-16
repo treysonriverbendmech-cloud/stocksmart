@@ -1099,6 +1099,7 @@
       <button class="stab" onclick="switchReportTab('usage')">Usage Log</button>
       <button class="stab" onclick="switchReportTab('inventory')">Full Inventory</button>
       <button class="stab" onclick="switchReportTab('receipts')">📋 Receipts</button>
+      <button class="stab" onclick="switchReportTab('reconcile')">🔗 HCP Reconcile</button>
     </div>
     <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -1150,6 +1151,13 @@
     <div class="stab-panel" id="rTabReceipts" style="padding-top:16px">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">All parts added or restocked via receipt scan. Use this to audit what the AI picked up.</div>
       <div id="receiptsContent"></div>
+    </div>
+    <div class="stab-panel" id="rTabReconcile" style="padding-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--text-muted)">All HCP sync items — matched, manual, and skipped.</div>
+        <button class="btn btn-ghost btn-sm" onclick="downloadReconcileCSV()" style="white-space:nowrap">⬇ CSV</button>
+      </div>
+      <div id="reconcileContent"><p style="color:var(--text-muted);font-size:14px">Loading…</p></div>
     </div>
   </div>
 </div>
@@ -2770,12 +2778,13 @@ window.switchTab = function(tab) {
 };
 
 window.switchReportTab = function(tab) {
-  const tabs = ['reorder','usage','inventory','receipts'];
+  const tabs = ['reorder','usage','inventory','receipts','reconcile'];
   document.querySelectorAll('#reportsModal .stab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('#reportsModal .stab-panel').forEach((p,i)=>p.classList.toggle('active',tabs[i]===tab));
   if (tab==='usage')     { populateUsageTechFilter(); renderUsageReport(); }
   if (tab==='inventory') { populateInventoryFilters(); renderInventoryReport(); }
   if (tab==='receipts')  { renderReceiptsReport(); }
+  if (tab==='reconcile') { renderReconcileReport(); }
 };
 
 function renderReceiptsReport() {
@@ -2820,6 +2829,114 @@ function renderReceiptsReport() {
       }).join('')}
     </div>`).join('');
 }
+
+async function renderReconcileReport() {
+  const el = document.getElementById('reconcileContent');
+  el.innerHTML = '<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
+  try {
+    const [pendingSnap, unmatchedSnap] = await Promise.all([
+      getDocs(co('hcpPending')),
+      getDocs(co('hcpUnmatched'))
+    ]);
+    const pending   = pendingSnap.docs.map(d=>({_id:d.id,...d.data()}));
+    const unmatched = unmatchedSnap.docs.map(d=>({_id:d.id,...d.data()}));
+
+    const fmtDate = ts => {
+      const d = ts?.toDate?.();
+      return d ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    };
+
+    // Build sections
+    const approved  = pending.filter(i=>i.status==='approved');
+    const resolved  = unmatched.filter(i=>i.status==='resolved');
+    const skipPend  = pending.filter(i=>i.status==='skipped');
+    const skipUnmat = unmatched.filter(i=>i.status==='skipped');
+    const stillPend = pending.filter(i=>!i.status||i.status==='pending');
+    const stillUnmat= unmatched.filter(i=>!i.status||i.status==='pending');
+
+    const rowStyle = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;display:flex;align-items:flex-start;gap:10px';
+
+    const renderPendingRow = (item, badge) => {
+      const matchedPart = parts.find(p=>p.id===item.partId);
+      return `<div style="${rowStyle}">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:var(--text)">${xss(item.partName||item.itemName||'Unknown')}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+            Job #${xss(String(item.jobNumber||''))} · Tech: ${xss(item.tech||'—')} · Qty: ${item.quantity||1}
+            ${item.jobRef?' · '+xss(item.jobRef):''}
+          </div>
+          ${matchedPart?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">→ ${xss(matchedPart.name)}${matchedPart.partNumber?' ('+xss(matchedPart.partNumber)+')':''}</div>`:''}
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          ${badge}
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${fmtDate(item.approvedAt||item.skippedAt||item.createdAt)}</div>
+        </div>
+      </div>`;
+    };
+
+    const renderUnmatchedRow = (item, badge) => {
+      const matchedPart = item.resolvedToPartId ? parts.find(p=>p.id===item.resolvedToPartId) : null;
+      return `<div style="${rowStyle}">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:var(--text)">${xss(item.itemName||'Unknown')}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+            Job #${xss(String(item.jobNumber||item.jobId||''))} · Tech: ${xss(item.tech||'—')} · Qty: ${item.quantity||1}
+          </div>
+          ${matchedPart?`<div style="font-size:11px;color:var(--green);margin-top:2px">→ ${xss(matchedPart.name)}${matchedPart.partNumber?' ('+xss(matchedPart.partNumber)+')':''}</div>`:''}
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          ${badge}
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${fmtDate(item.resolvedAt||item.skippedAt||item.createdAt)}</div>
+        </div>
+      </div>`;
+    };
+
+    const section = (title, color, rows) => rows.length === 0 ? '' : `
+      <div class="report-section" style="margin-bottom:16px">
+        <div class="report-section-title" style="color:${color}">${title} <span style="font-weight:400;font-size:12px">(${rows.length})</span></div>
+        ${rows}
+      </div>`;
+
+    const html = [
+      section('✅ Auto-Matched & Approved', 'var(--green)',
+        approved.map(i=>renderPendingRow(i,`<span style="background:rgba(52,211,153,.15);color:var(--green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Auto-matched</span>`)).join('')),
+      section('🔗 Manually Matched', 'var(--accent)',
+        resolved.map(i=>renderUnmatchedRow(i,`<span style="background:rgba(99,102,241,.15);color:var(--accent);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Manual match</span>`)).join('')),
+      section('⏭ Skipped — Was Pending Match', 'var(--amber)',
+        skipPend.map(i=>renderPendingRow(i,`<span style="background:rgba(251,191,36,.12);color:var(--amber);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Skipped</span>`)).join('')),
+      section('❌ Skipped — Could Not Match', 'var(--red)',
+        skipUnmat.map(i=>renderUnmatchedRow(i,`<span style="background:rgba(248,113,113,.12);color:var(--red);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Skipped</span>`)).join('')),
+      section('⏳ Still Pending Review', 'var(--text-muted)',
+        [...stillPend.map(i=>renderPendingRow(i,`<span style="background:var(--surface3);color:var(--text-muted);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Pending</span>`)),
+         ...stillUnmat.map(i=>renderUnmatchedRow(i,`<span style="background:var(--surface3);color:var(--text-muted);font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px">Unmatched</span>`))].join(''))
+    ].join('');
+
+    el.innerHTML = html || '<div class="report-empty">No HCP sync history yet.</div>';
+  } catch(e) {
+    el.innerHTML = `<div class="report-empty">Error loading: ${xss(e.message)}</div>`;
+  }
+}
+
+window.downloadReconcileCSV = async function() {
+  const [pendingSnap, unmatchedSnap] = await Promise.all([
+    getDocs(co('hcpPending')),
+    getDocs(co('hcpUnmatched'))
+  ]);
+  const rows = [['Status','Type','Item Name','Job #','Tech','Qty','Matched To','Date'].map(csvEscape).join(',')];
+  pendingSnap.docs.forEach(d => {
+    const i = d.data();
+    const matchedPart = parts.find(p=>p.id===i.partId);
+    const dt = (i.approvedAt||i.skippedAt||i.createdAt)?.toDate?.()?.toLocaleDateString()||'';
+    rows.push([i.status||'pending','Auto-match',i.partName||'',i.jobNumber||'',i.tech||'',i.quantity||1,matchedPart?.name||'',dt].map(csvEscape).join(','));
+  });
+  unmatchedSnap.docs.forEach(d => {
+    const i = d.data();
+    const matchedPart = i.resolvedToPartId ? parts.find(p=>p.id===i.resolvedToPartId) : null;
+    const dt = (i.resolvedAt||i.skippedAt||i.createdAt)?.toDate?.()?.toLocaleDateString()||'';
+    rows.push([i.status||'pending','Manual match',i.itemName||'',i.jobNumber||i.jobId||'',i.tech||'',i.quantity||1,matchedPart?.name||'',dt].map(csvEscape).join(','));
+  });
+  downloadCSV('hcp-reconcile.csv', rows);
+};
 
 function renderCatEditor() {
   const el = document.getElementById('catEditor');
