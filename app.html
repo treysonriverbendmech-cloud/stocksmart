@@ -3295,31 +3295,24 @@ window.scanReceipt = async function() {
       throw new Error(detail || json.error || `HTTP ${res.status}`);
     }
     receiptItems = (json.items||[]).map((item,i) => {
-      // Try to find an existing inventory match (part# → price → name keywords)
-      // Non-stock items (tools, equipment, assets) are excluded from matching — they
-      // aren't consumables and shouldn't be restocked via receipt scan.
-      const stockParts = parts.filter(p => !p.nonStock);
+      const stockParts    = parts.filter(p => !p.nonStock);
+      const nonStockParts = parts.filter(p =>  p.nonStock);
       let inventoryMatch = null;
       let matchType = null;
-
-      // Match confidence levels:
-      //   'partNumber' = exact part# hit        → confident, auto-check
-      //   'price'      = unique price hit        → confident, auto-check
-      //   'name'       = keyword name only       → LOW CONFIDENCE, flagged amber, NOT auto-restocked
       let matchConfidence = 'high';
+      let isNonStockMatch = false;
 
-      // 1. Part number exact match (most reliable)
+      // 1. Part number exact match against STOCK parts (most reliable)
       if (item.partNumber) {
         const m = stockParts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
         if (m) { inventoryMatch = m; matchType = 'partNumber'; }
       }
-      // 2. Exact price match — only if unique AND price is non-trivial (>$1 avoids false hits on cheap fittings)
+      // 2. Exact price match against stock parts — unique non-trivial price only
       if (!inventoryMatch && item.price > 1) {
         const priceMatches = stockParts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
         if (priceMatches.length === 1) { inventoryMatch = priceMatches[0]; matchType = 'price'; }
       }
-      // 3. Name keyword match — flagged as LOW confidence so user must manually approve
-      //    Requires 3+ significant words to match (was 2, tightened to reduce false positives)
+      // 3. Name keyword match against stock parts — LOW confidence
       if (!inventoryMatch) {
         const stopW = new Set(['the','and','for','with','each','unit','per','replacement','motor','blower']);
         const words = (item.name||'').toLowerCase().split(/[\s\-\/,]+/).filter(w=>w.length>=3&&!stopW.has(w));
@@ -3331,10 +3324,35 @@ window.scanReceipt = async function() {
           if (m) { inventoryMatch = m; matchType = 'name'; matchConfidence = 'low'; }
         }
       }
+      // 4. If still no match, check NON-STOCK parts — flag as "seen before" prompt
+      if (!inventoryMatch) {
+        let nsMatch = null;
+        if (item.partNumber) {
+          nsMatch = nonStockParts.find(p => p.partNumber && p.partNumber.toLowerCase() === item.partNumber.toLowerCase());
+        }
+        if (!nsMatch && item.price > 1) {
+          const pm = nonStockParts.filter(p => p.price && Math.abs(parseFloat(p.price) - parseFloat(item.price)) < 0.01);
+          if (pm.length === 1) nsMatch = pm[0];
+        }
+        if (!nsMatch) {
+          const stopW = new Set(['the','and','for','with','each','unit','per','replacement','motor','blower']);
+          const words = (item.name||'').toLowerCase().split(/[\s\-\/,]+/).filter(w=>w.length>=3&&!stopW.has(w));
+          if (words.length >= 3) {
+            nsMatch = nonStockParts.find(p => {
+              const pn = (p.name||'').toLowerCase();
+              return words.filter(w=>pn.includes(w)).length >= Math.min(3, Math.ceil(words.length*0.6));
+            });
+          }
+        }
+        if (nsMatch) { inventoryMatch = nsMatch; matchType = 'nonstock'; isNonStockMatch = true; }
+      }
 
-      // Low-confidence (name-only) matches: flag as "needs review", don't auto-restock
       const isLowConfidence = matchConfidence === 'low';
-      return { ...item, _id:i, _checked:!isLowConfidence, _dup: inventoryMatch||null, _matchType: matchType, _lowConf: isLowConfidence };
+      // Non-stock matches need a user decision — default to 'new' (add fresh), user can pick 'restock'
+      return { ...item, _id:i, _checked: !isLowConfidence && !isNonStockMatch,
+               _dup: inventoryMatch||null, _matchType: matchType,
+               _lowConf: isLowConfidence, _nonStockMatch: isNonStockMatch,
+               _nonStockChoice: 'new' }; // 'new' or 'restock'
     });
     renderReceiptItems();
     document.getElementById('receiptResults').classList.remove('hidden');
@@ -3369,6 +3387,37 @@ function renderReceiptItems() {
     const rcptPrice= `$${(+(item.price||0)).toFixed(2)}`;
     const pnMismatch    = item._dup && item._matchType !== 'partNumber' && item._dup.partNumber && item.partNumber && item._dup.partNumber.toLowerCase() !== item.partNumber.toLowerCase();
     const priceMismatch = item._dup && item.price > 0 && item._dup.price && Math.abs(parseFloat(item._dup.price)-parseFloat(item.price)) > 0.50;
+
+    // Non-stock match gets its own special card — skip the normal flow
+    if (item._nonStockMatch && item._dup) {
+      return `
+      <div class="receipt-item" style="border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.04)">
+        <div class="receipt-item-info" style="flex:1;min-width:0;width:100%">
+          <div class="receipt-item-name">${xss(item.name||'Unknown Item')} <span class="dup-badge" style="background:rgba(251,191,36,.15);color:var(--amber)">🔧 Seen before (non-stock)</span></div>
+          <div class="receipt-item-meta">
+            ${item.partNumber?`Part #: <strong>${xss(item.partNumber)}</strong> · `:''}
+            Qty: <strong>${item.quantity||1}</strong> · Price: <strong>${rcptPrice}</strong>
+          </div>
+          <div style="margin-top:8px;padding:10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:6px;font-size:12px">
+            <div style="color:var(--amber);font-weight:600;margin-bottom:6px">Previously tracked as non-stock: <em>${xss(item._dup.name)}</em></div>
+            <div style="color:var(--text-muted);font-size:11px;margin-bottom:10px">Last seen: ${xss(item._dup.boxName||'no location')} · ${item._dup.quantity||0} on hand</div>
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px">What do you want to do?</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button id="nsBtn_restock_${item._id}" class="btn btn-ghost btn-sm" style="text-align:left;border-color:rgba(251,191,36,.4)"
+                onclick="setNonStockChoice(${item._id},'restock')">
+                ↑ Add ${item.quantity||1} to existing record — track quantity
+              </button>
+              <button id="nsBtn_new_${item._id}" class="btn btn-primary btn-sm" style="text-align:left"
+                onclick="setNonStockChoice(${item._id},'new')">
+                + Add as new entry — one-time purchase
+              </button>
+              <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text-muted)"
+                onclick="receiptSkipItem(${item._id})">Skip this item</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
 
     return `
     <div class="receipt-item ${item._dup?'dup':''}">
@@ -3406,6 +3455,29 @@ function renderReceiptItems() {
 window.toggleReceiptItem = function(id) {
   const item = receiptItems.find(i=>i._id===id);
   if (item) item._checked = !item._checked;
+};
+
+window.setNonStockChoice = function(id, choice) {
+  const item = receiptItems.find(i=>i._id===id); if (!item) return;
+  item._nonStockChoice = choice;
+  item._checked = true;
+  // Highlight the chosen button
+  const btnRestock = document.getElementById('nsBtn_restock_'+id);
+  const btnNew     = document.getElementById('nsBtn_new_'+id);
+  if (btnRestock && btnNew) {
+    if (choice === 'restock') {
+      btnRestock.className = 'btn btn-success btn-sm';
+      btnNew.className     = 'btn btn-ghost btn-sm';
+    } else {
+      btnNew.className     = 'btn btn-success btn-sm';
+      btnRestock.className = 'btn btn-ghost btn-sm';
+    }
+  }
+};
+
+window.receiptSkipItem = function(id) {
+  receiptItems = receiptItems.filter(i=>i._id!==id);
+  renderReceiptItems();
 };
 
 // Add scanned qty to the matched existing inventory part (restocking)
@@ -3465,8 +3537,9 @@ window.receiptAddNew = function(id) {
 };
 
 window.confirmReceiptAdd = async function() {
-  const toAdd     = receiptItems.filter(i => i._checked && !i._dup);
-  const toRestock = receiptItems.filter(i => i._checked && i._dup);
+  // Non-stock items with 'restock' choice go to restock pile; 'new' choice go to new pile
+  const toAdd     = receiptItems.filter(i => i._checked && (!i._dup || (i._nonStockMatch && i._nonStockChoice === 'new')));
+  const toRestock = receiptItems.filter(i => i._checked && i._dup  && (!i._nonStockMatch || i._nonStockChoice === 'restock'));
 
   if (!toAdd.length && !toRestock.length) {
     toast('No items checked','err'); return;
