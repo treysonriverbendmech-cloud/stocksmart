@@ -776,7 +776,8 @@
         </div>
         <div class="fgroup">
           <label class="flabel">Box #</label>
-          <input id="fBoxNum" class="finput" type="text" placeholder="e.g. Box 3, Bin A">
+          <input id="fBoxNum" class="finput" type="text" placeholder="e.g. Box 3, Bin A" list="boxNumSuggestions" autocomplete="off">
+          <datalist id="boxNumSuggestions"></datalist>
         </div>
       </div>
       <!-- Keywords -->
@@ -2300,6 +2301,7 @@ window.openAdd = function(id=null) {
   editingId = id;
   document.getElementById('addTitle').textContent = id ? 'Edit Part' : 'Add Part';
   populateBoxSelect();
+  populateBoxNumSuggestions();
   hideConfidence();
   // Always reset save button state so it's never stuck on "Saving…" from a prior save
   _savingItem = false;
@@ -2364,6 +2366,20 @@ function populateBoxSelect() {
     if (b.id===cur) o.selected=true;
     sel.appendChild(o);
   });
+}
+
+function populateBoxNumSuggestions() {
+  const dl = document.getElementById('boxNumSuggestions'); if (!dl) return;
+  // Unique existing box numbers, sorted — case-insensitive deduplication
+  const seen = new Set();
+  const unique = [];
+  [...parts].map(p => p.boxNumber).filter(Boolean)
+    .sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .forEach(n => {
+      const key = n.toLowerCase().trim();
+      if (!seen.has(key)) { seen.add(key); unique.push(n); }
+    });
+  dl.innerHTML = unique.map(n => `<option value="${xss(n)}">`).join('');
 }
 
 window.onCatChange = function() {
