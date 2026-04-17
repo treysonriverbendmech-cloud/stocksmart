@@ -780,6 +780,11 @@
           <datalist id="boxNumSuggestions"></datalist>
         </div>
       </div>
+      <!-- Job / Customer reference -->
+      <div class="fgroup">
+        <label class="flabel">Job # / Customer <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:4px">optional — for special orders</span></label>
+        <input id="fJobRef" class="finput" type="text" placeholder="e.g. HCP #8609, Smith residence">
+      </div>
       <!-- Keywords -->
       <div class="fgroup">
         <label class="flabel">Keywords <span class="ai-pill">✦ AI</span></label>
@@ -2177,6 +2182,7 @@ function renderGrid() {
             : `<span class="meta-item">Qty <strong>${p.quantity||0}</strong></span>`}
           ${isLow?`<span class="low-stock">⚠ Low</span>`:''}
           ${p.nonStock?`<span class="low-stock" style="color:var(--text-muted);background:var(--surface3)">🔧 Non-stock</span>`:''}
+          ${p.jobRef?`<span class="low-stock" style="color:var(--amber);background:rgba(251,191,36,.12)">📋 ${xss(p.jobRef)}</span>`:''}
           ${isDupe?`<span class="low-stock find-dupes-btn" style="color:#f87171;background:rgba(248,113,113,.15);cursor:pointer" title="Tap to find all copies" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Duplicate — tap to find all</span>`:''}
           ${isSoftDupe?`<span class="low-stock find-dupes-btn" style="color:var(--amber);background:rgba(251,191,36,.12);cursor:pointer" title="Similar part number found — tap to compare" data-pn="${xss(p.partNumber||'')}" data-nm="${xss(p.name||'')}">⚠ Similar PN — tap to compare</span>`:''}
           ${showLocBadge?`<span class="meta-item" style="font-size:11px;color:var(--accent);background:rgba(99,102,241,.12);border-radius:100px;padding:1px 7px;font-weight:600">📦 ${locTotal} locations</span>`:''}
@@ -2318,6 +2324,7 @@ window.openAdd = function(id=null) {
       document.getElementById('fMinQty'  ).value = p.minQuantity || '';
       document.getElementById('fKeywords').value = (p.keywords||[]).join(', ');
       document.getElementById('fNotes'   ).value = p.notes     || '';
+      document.getElementById('fJobRef'  ).value = p.jobRef    || '';
       document.getElementById('fNonStock').checked = p.nonStock || false;
       document.getElementById('partNumDisplay').textContent = p.partNumber || '';
       updateSubcatOptions(p.category);
@@ -2339,7 +2346,7 @@ window.openAdd = function(id=null) {
 };
 
 function resetForm() {
-  ['fName','fPrice','fKeywords','fNotes'].forEach(id => document.getElementById(id).value='');
+  ['fName','fPrice','fKeywords','fNotes','fJobRef'].forEach(id => document.getElementById(id).value='');
   document.getElementById('fNonStock').checked = false;
   document.getElementById('fCat').value='';
   document.getElementById('fSubcat').innerHTML='<option value="">Select subcategory…</option>';
@@ -2526,6 +2533,7 @@ window.saveItem = async function() {
     boxName:       box ? box.name : null,
     boxNumber:     boxNumber || null,
     notes:         document.getElementById('fNotes').value.trim(),
+    jobRef:        document.getElementById('fJobRef').value.trim() || null,
     nonStock:      document.getElementById('fNonStock').checked || false,
     photo:         photoData || null,
     trackUnit:     trackUnit || null,
@@ -2641,6 +2649,7 @@ window.openDetail = function(id) {
         ${p.boxNumber?`<div><div class="dfield-label">Box #</div><div class="dfield-val">📦 ${xss(p.boxNumber)}</div></div>`:'<div></div>'}
       </div>`:''}
       ${kws?`<div><div class="dfield-label">Keywords</div><div class="tag-list" style="margin-top:4px">${kws}</div></div>`:''}
+      ${p.jobRef?`<div><div class="dfield-label">Job / Customer</div><div class="dfield-val" style="color:var(--amber)">📋 ${xss(p.jobRef)}</div></div>`:''}
       ${p.notes?`<div><div class="dfield-label">Notes</div><div class="dfield-val" style="line-height:1.6">${xss(p.notes)}</div></div>`:''}
       ${(()=>{
         const src = p.source === 'receipt' ? '📋 Added via receipt scan'
