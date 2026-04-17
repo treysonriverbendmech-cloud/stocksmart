@@ -3703,6 +3703,7 @@ window.openReports = async function() {
       .map(u => (u.displayName || u.email || '').trim())
       .filter(Boolean);
   } catch(e) { console.warn('openReports: could not load users', e.message); }
+  populateReorderFilters();
   renderReorderList();
   populateUsageTechFilter();
   renderUsageReport();
@@ -3712,42 +3713,45 @@ window.openReports = async function() {
   showModal('reportsModal');
 };
 
-function renderReorderList() {
-  const el = document.getElementById('reorderContent');
+function populateReorderFilters() {
   const locSel    = document.getElementById('reorderLocFilter');
   const boxNumSel = document.getElementById('reorderBoxNumFilter');
+  if (!locSel || !boxNumSel) return;
 
-  // Populate location options
-  const curLoc = locSel?.value || '';
-  if (locSel) {
-    locSel.innerHTML = '<option value="">All Locations</option><option value="__located__">Has a location</option>';
-    boxes.forEach(b => {
-      const o = document.createElement('option');
-      o.value = b.name; o.textContent = b.name;
-      if (b.name === curLoc) o.selected = true;
-      locSel.appendChild(o);
-    });
-    if (curLoc && curLoc !== '__located__') locSel.value = curLoc;
-  }
+  const curLoc    = locSel.value;
+  const curBoxNum = boxNumSel.value;
 
-  // Populate Box # options from parts visible after location filter
-  const curBoxNum = boxNumSel?.value || '';
-  if (boxNumSel) {
-    const normKey = s => s.toLowerCase().trim().replace(/[\u2018\u2019\u201A\u201B\u2032\u0060]/g,"'").replace(/\s+/g,' ');
-    const seen = new Set();
-    const boxNums = [];
-    parts.filter(p => !p.nonStock).map(p => p.boxNumber).filter(Boolean)
-      .sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-      .forEach(n => { const k = normKey(n); if (!seen.has(k)) { seen.add(k); boxNums.push(n); } });
-    boxNumSel.innerHTML = '<option value="">All Box #</option>';
-    boxNums.forEach(n => {
-      const o = document.createElement('option');
-      o.value = n; o.textContent = n;
-      if (n === curBoxNum) o.selected = true;
-      boxNumSel.appendChild(o);
-    });
-    if (curBoxNum) boxNumSel.value = curBoxNum;
-  }
+  // Locations
+  locSel.innerHTML = '<option value="">All Locations</option><option value="__located__">Has a location</option>';
+  boxes.forEach(b => {
+    const o = document.createElement('option');
+    o.value = b.name; o.textContent = b.name;
+    locSel.appendChild(o);
+  });
+  locSel.value = curLoc;
+
+  // Box numbers — deduped, normalized
+  const normKey = s => s.toLowerCase().trim().replace(/[\u2018\u2019\u201A\u201B\u2032\u0060]/g,"'").replace(/\s+/g,' ');
+  const seen = new Set(); const boxNums = [];
+  parts.filter(p => !p.nonStock).map(p => p.boxNumber).filter(Boolean)
+    .sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .forEach(n => { const k = normKey(n); if (!seen.has(k)) { seen.add(k); boxNums.push(n); } });
+  boxNumSel.innerHTML = '<option value="">All Box #</option>';
+  boxNums.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n;
+    boxNumSel.appendChild(o);
+  });
+  boxNumSel.value = curBoxNum;
+}
+
+function renderReorderList() {
+  const el = document.getElementById('reorderContent');
+
+  // Just READ — never repopulate inside render
+  const normKey   = s => (s||'').toLowerCase().trim().replace(/[\u2018\u2019\u201A\u201B\u2032\u0060]/g,"'").replace(/\s+/g,' ');
+  const curLoc    = document.getElementById('reorderLocFilter')?.value    || '';
+  const curBoxNum = document.getElementById('reorderBoxNumFilter')?.value || '';
 
   let stockParts = parts.filter(p => !p.nonStock);
 
@@ -3758,9 +3762,10 @@ function renderReorderList() {
     stockParts = stockParts.filter(p => (p.boxName || '') === curLoc);
   }
 
-  // Apply Box # filter
+  // Apply Box # filter — normalize both sides to handle apostrophe variants
   if (curBoxNum) {
-    stockParts = stockParts.filter(p => (p.boxNumber || '') === curBoxNum);
+    const normBoxNum = normKey(curBoxNum);
+    stockParts = stockParts.filter(p => normKey(p.boxNumber || '') === normBoxNum);
   }
 
   const low = stockParts.filter(p => p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity));
