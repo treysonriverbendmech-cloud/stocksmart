@@ -3745,7 +3745,7 @@ function populateReorderFilters() {
   boxNumSel.value = curBoxNum;
 }
 
-function renderReorderList() {
+window.renderReorderList = function() {
   const el = document.getElementById('reorderContent');
 
   // Just READ — never repopulate inside render
