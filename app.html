@@ -1128,6 +1128,9 @@
           <option value="">All Locations</option>
           <option value="__located__">Has a location</option>
         </select>
+        <select id="reorderBoxNumFilter" class="filter-sel" style="flex:1;min-width:130px" onchange="renderReorderList()">
+          <option value="">All Box #</option>
+        </select>
         <button class="btn btn-ghost btn-sm" onclick="downloadReorderCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="reorderContent"></div>
@@ -3711,9 +3714,10 @@ window.openReports = async function() {
 
 function renderReorderList() {
   const el = document.getElementById('reorderContent');
-  const locSel = document.getElementById('reorderLocFilter');
+  const locSel    = document.getElementById('reorderLocFilter');
+  const boxNumSel = document.getElementById('reorderBoxNumFilter');
 
-  // Populate location options (boxes + special options)
+  // Populate location options
   const curLoc = locSel?.value || '';
   if (locSel) {
     locSel.innerHTML = '<option value="">All Locations</option><option value="__located__">Has a location</option>';
@@ -3726,6 +3730,25 @@ function renderReorderList() {
     if (curLoc && curLoc !== '__located__') locSel.value = curLoc;
   }
 
+  // Populate Box # options from parts visible after location filter
+  const curBoxNum = boxNumSel?.value || '';
+  if (boxNumSel) {
+    const normKey = s => s.toLowerCase().trim().replace(/[\u2018\u2019\u201A\u201B\u2032\u0060]/g,"'").replace(/\s+/g,' ');
+    const seen = new Set();
+    const boxNums = [];
+    parts.filter(p => !p.nonStock).map(p => p.boxNumber).filter(Boolean)
+      .sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+      .forEach(n => { const k = normKey(n); if (!seen.has(k)) { seen.add(k); boxNums.push(n); } });
+    boxNumSel.innerHTML = '<option value="">All Box #</option>';
+    boxNums.forEach(n => {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      if (n === curBoxNum) o.selected = true;
+      boxNumSel.appendChild(o);
+    });
+    if (curBoxNum) boxNumSel.value = curBoxNum;
+  }
+
   let stockParts = parts.filter(p => !p.nonStock);
 
   // Apply location filter
@@ -3733,6 +3756,11 @@ function renderReorderList() {
     stockParts = stockParts.filter(p => p.boxId || p.boxName);
   } else if (curLoc) {
     stockParts = stockParts.filter(p => (p.boxName || '') === curLoc);
+  }
+
+  // Apply Box # filter
+  if (curBoxNum) {
+    stockParts = stockParts.filter(p => (p.boxNumber || '') === curBoxNum);
   }
 
   const low = stockParts.filter(p => p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity));
@@ -5244,17 +5272,24 @@ window.downloadInventoryCSV = function() {
 };
 
 window.downloadReorderCSV = function() {
-  const low = parts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
-  const out = parts.filter(p=>(parseInt(p.quantity)||0)===0);
+  const curLoc    = document.getElementById('reorderLocFilter')?.value    || '';
+  const curBoxNum = document.getElementById('reorderBoxNumFilter')?.value || '';
+  let stockParts = parts.filter(p => !p.nonStock);
+  if (curLoc === '__located__') stockParts = stockParts.filter(p => p.boxId || p.boxName);
+  else if (curLoc) stockParts = stockParts.filter(p => (p.boxName||'') === curLoc);
+  if (curBoxNum) stockParts = stockParts.filter(p => (p.boxNumber||'') === curBoxNum);
+  const low = stockParts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
+  const out = stockParts.filter(p=>(parseInt(p.quantity)||0)===0);
   const all = [...new Set([...out,...low])];
   if (!all.length) { toast('No low stock items to export','err'); return; }
-  const rows = [['Location','Part Name','Part #','Qty','Min Qty','Status'].map(csvEscape).join(',')];
+  const rows = [['Location','Box #','Part Name','Part #','Qty','Min Qty','Price','Status'].map(csvEscape).join(',')];
   all.forEach(p=>{
     const qty=parseInt(p.quantity)||0;
     const status=qty===0?'Out of Stock':'Low Stock';
-    rows.push([p.boxName||'No Location',p.name||'',p.partNumber||'',qty,p.minQuantity||0,status].map(csvEscape).join(','));
+    rows.push([p.boxName||'No Location',p.boxNumber||'',p.name||'',p.partNumber||'',qty,p.minQuantity||0,p.price?parseFloat(p.price).toFixed(2):'',status].map(csvEscape).join(','));
   });
-  downloadCSV(`reorder-list-${new Date().toISOString().slice(0,10)}.csv`, rows);
+  const suffix = curBoxNum ? `-${curBoxNum.replace(/[^a-z0-9]/gi,'_')}` : curLoc ? `-${curLoc.replace(/[^a-z0-9]/gi,'_')}` : '';
+  downloadCSV(`reorder-list${suffix}-${new Date().toISOString().slice(0,10)}.csv`, rows);
   toast('CSV downloaded!','ok');
 };
 </script>
