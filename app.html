@@ -1123,8 +1123,12 @@
       <button class="stab" onclick="switchReportTab('reconcile')">🔗 HCP Reconcile</button>
     </div>
     <div class="stab-panel active" id="rTabReorder" style="padding-top:16px">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-        <button class="btn btn-ghost btn-sm" onclick="downloadReorderCSV()">⬇ Download CSV</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
+        <select id="reorderLocFilter" class="filter-sel" style="flex:1;min-width:140px" onchange="renderReorderList()">
+          <option value="">All Locations</option>
+          <option value="__located__">Has a location</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="downloadReorderCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
       <div id="reorderContent"></div>
     </div>
@@ -3706,31 +3710,59 @@ window.openReports = async function() {
 };
 
 function renderReorderList() {
-  const el=document.getElementById('reorderContent');
-  const stockParts = parts.filter(p => !p.nonStock);
-  const low = stockParts.filter(p=>p.minQuantity>0&&(parseInt(p.quantity)||0)<=parseInt(p.minQuantity));
-  const out  = stockParts.filter(p=>(parseInt(p.quantity)||0)===0);
-  if (!low.length && !out.length) {
-    el.innerHTML='<div class="report-empty">✅ All parts are sufficiently stocked!</div>'; return;
+  const el = document.getElementById('reorderContent');
+  const locSel = document.getElementById('reorderLocFilter');
+
+  // Populate location options (boxes + special options)
+  const curLoc = locSel?.value || '';
+  if (locSel) {
+    locSel.innerHTML = '<option value="">All Locations</option><option value="__located__">Has a location</option>';
+    boxes.forEach(b => {
+      const o = document.createElement('option');
+      o.value = b.name; o.textContent = b.name;
+      if (b.name === curLoc) o.selected = true;
+      locSel.appendChild(o);
+    });
+    if (curLoc && curLoc !== '__located__') locSel.value = curLoc;
   }
+
+  let stockParts = parts.filter(p => !p.nonStock);
+
+  // Apply location filter
+  if (curLoc === '__located__') {
+    stockParts = stockParts.filter(p => p.boxId || p.boxName);
+  } else if (curLoc) {
+    stockParts = stockParts.filter(p => (p.boxName || '') === curLoc);
+  }
+
+  const low = stockParts.filter(p => p.minQuantity > 0 && (parseInt(p.quantity)||0) <= parseInt(p.minQuantity));
+  const out = stockParts.filter(p => (parseInt(p.quantity)||0) === 0);
+
+  if (!low.length && !out.length) {
+    el.innerHTML = '<div class="report-empty">✅ All parts are sufficiently stocked!</div>'; return;
+  }
+
   // Group by location
   const byLoc = {};
-  [...out,...low.filter(p=>(parseInt(p.quantity)||0)>0)].forEach(p=>{
-    const loc = p.boxName||'No Location';
-    if (!byLoc[loc]) byLoc[loc]=[];
+  [...out, ...low.filter(p => (parseInt(p.quantity)||0) > 0)].forEach(p => {
+    const loc = p.boxName || 'No Location';
+    if (!byLoc[loc]) byLoc[loc] = [];
     byLoc[loc].push(p);
   });
-  el.innerHTML = Object.entries(byLoc).map(([loc,items])=>`
+
+  el.innerHTML = Object.entries(byLoc).map(([loc, items]) => `
     <div class="report-section">
       <div class="report-section-title">📍 ${xss(loc)}</div>
-      ${items.map(p=>{
-        const qty=parseInt(p.quantity)||0;
-        const badge=qty===0
+      ${items.map(p => {
+        const qty = parseInt(p.quantity)||0;
+        const badge = qty === 0
           ? `<span class="report-badge-red">OUT OF STOCK</span>`
           : `<span class="report-badge-amber">Low: ${qty} / min ${p.minQuantity}</span>`;
         return `<div class="report-row">
-          <div class="report-row-name">${xss(p.name)}</div>
-          <div class="report-row-meta">${xss(p.partNumber||'')}</div>
+          <div>
+            <div class="report-row-name">${xss(p.name)}</div>
+            <div class="report-row-meta">${xss(p.partNumber||'')}${p.jobRef?' · 📋 '+xss(p.jobRef):''}</div>
+          </div>
           ${badge}
         </div>`;
       }).join('')}
