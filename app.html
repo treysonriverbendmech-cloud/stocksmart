@@ -3725,7 +3725,7 @@ function populateReorderFilters() {
   locSel.innerHTML = '<option value="">All Locations</option><option value="__located__">Has a location</option>';
   boxes.forEach(b => {
     const o = document.createElement('option');
-    o.value = b.name; o.textContent = b.name;
+    o.value = b.id; o.textContent = b.name;
     locSel.appendChild(o);
   });
   locSel.value = curLoc;
@@ -3759,7 +3759,7 @@ function renderReorderList() {
   if (curLoc === '__located__') {
     stockParts = stockParts.filter(p => p.boxId || p.boxName);
   } else if (curLoc) {
-    stockParts = stockParts.filter(p => (p.boxName || '') === curLoc);
+    stockParts = stockParts.filter(p => (p.boxId || '') === curLoc);
   }
 
   // Apply Box # filter — normalize both sides to handle apostrophe variants
