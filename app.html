@@ -2370,13 +2370,17 @@ function populateBoxSelect() {
 
 function populateBoxNumSuggestions() {
   const dl = document.getElementById('boxNumSuggestions'); if (!dl) return;
-  // Unique existing box numbers, sorted — case-insensitive deduplication
+  // Normalize for dedup: lowercase, trim, collapse whitespace, unify apostrophe variants
+  const normKey = s => s.toLowerCase().trim()
+    .replace(/[\u2018\u2019\u201A\u201B\u2032\u0060]/g, "'") // curly/smart quotes → straight
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')        // curly double quotes → straight
+    .replace(/\s+/g, ' ');                                     // collapse extra spaces
   const seen = new Set();
   const unique = [];
   [...parts].map(p => p.boxNumber).filter(Boolean)
     .sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     .forEach(n => {
-      const key = n.toLowerCase().trim();
+      const key = normKey(n);
       if (!seen.has(key)) { seen.add(key); unique.push(n); }
     });
   dl.innerHTML = unique.map(n => `<option value="${xss(n)}">`).join('');
