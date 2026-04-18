@@ -1190,9 +1190,9 @@
     </div>
     <div class="stab-panel" id="rTabReconcile" style="padding-top:16px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
-        <input type="date" id="reconcileDateFrom" class="filter-sel" style="flex:1;min-width:130px" onchange="renderReconcileReport()" title="From date">
+        <input type="date" id="reconcileDateFrom" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer" onchange="renderReconcileReport()" title="From date">
         <span style="color:var(--text-muted);font-size:13px;flex-shrink:0">to</span>
-        <input type="date" id="reconcileDateTo" class="filter-sel" style="flex:1;min-width:130px" onchange="renderReconcileReport()" title="To date">
+        <input type="date" id="reconcileDateTo" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer" onchange="renderReconcileReport()" title="To date">
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('reconcileDateFrom').value='';document.getElementById('reconcileDateTo').value='';renderReconcileReport()" style="white-space:nowrap">Clear</button>
         <button class="btn btn-ghost btn-sm" onclick="downloadReconcileCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
