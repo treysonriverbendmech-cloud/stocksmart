@@ -1709,7 +1709,7 @@ async function getAdminUid() {
 
 // ─── Default subcategories ────────────────────────────────────────────────────
 const DEFAULT_SUBS = {
-  HVAC:       ['New Parts','Used Parts','Ductwork & Fittings','Air Distribution Devices','Filters / Air Quality','Motors & Compressors','R-410A','R-22','R-32','R-454B','R-407C','R-404A','Thermostats & Controls','Pipes & Fittings','Other'],
+  HVAC:       ['New Parts','Used Parts','Ductwork & Fittings','Air Distribution Devices','Filters / Air Quality','Motors & Compressors','Refrigerants','Thermostats & Controls','Pipes & Fittings','Other'],
   Plumbing:   ['Pipes & Fittings','Rigging Material','Sealants & Adhesives','Rigging & Strapping','Other'],
   Electrical: ['Wire / Cables','Conduit & Fittings','Straps & Hanging','Breakers & Panels','Electrical Devices','Junction Boxes','Other'],
   General:    ['Fasteners & Hardware','Safety Equipment','Consumables','Job Supplies','Other'],
@@ -1758,7 +1758,10 @@ async function loadSettings() {
       const d = snap.data();
       if (d.subcategories) {
         Object.keys(DEFAULT_SUBS).forEach(cat => {
-          settings.subcategories[cat] = d.subcategories[cat] || DEFAULT_SUBS[cat];
+          // Use saved value if it exists (even empty array), only fall back to defaults if key is truly absent
+          settings.subcategories[cat] = Object.prototype.hasOwnProperty.call(d.subcategories, cat)
+            ? d.subcategories[cat]
+            : DEFAULT_SUBS[cat];
         });
       }
       if (d.companyName)  settings.companyName  = d.companyName;
