@@ -1189,10 +1189,14 @@
       <div id="receiptsContent"></div>
     </div>
     <div class="stab-panel" id="rTabReconcile" style="padding-top:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
-        <div style="font-size:13px;color:var(--text-muted)">All HCP sync items — matched, manual, and skipped.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
+        <input type="date" id="reconcileDateFrom" class="filter-sel" style="flex:1;min-width:130px" onchange="renderReconcileReport()" title="From date">
+        <span style="color:var(--text-muted);font-size:13px;flex-shrink:0">to</span>
+        <input type="date" id="reconcileDateTo" class="filter-sel" style="flex:1;min-width:130px" onchange="renderReconcileReport()" title="To date">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('reconcileDateFrom').value='';document.getElementById('reconcileDateTo').value='';renderReconcileReport()" style="white-space:nowrap">Clear</button>
         <button class="btn btn-ghost btn-sm" onclick="downloadReconcileCSV()" style="white-space:nowrap">⬇ CSV</button>
       </div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">All HCP sync items — matched, manual, and skipped.</div>
       <div id="reconcileContent"><p style="color:var(--text-muted);font-size:14px">Loading…</p></div>
     </div>
   </div>
@@ -2905,7 +2909,7 @@ function renderReceiptsReport() {
     </div>`).join('');
 }
 
-async function renderReconcileReport() {
+window.renderReconcileReport = async function() {
   const el = document.getElementById('reconcileContent');
   el.innerHTML = '<p style="color:var(--text-muted);font-size:14px">Loading…</p>';
   try {
@@ -2921,13 +2925,30 @@ async function renderReconcileReport() {
       return d ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
     };
 
-    // Build sections
-    const approved  = pending.filter(i=>i.status==='approved');
-    const resolved  = unmatched.filter(i=>i.status==='resolved');
-    const skipPend  = pending.filter(i=>i.status==='skipped');
-    const skipUnmat = unmatched.filter(i=>i.status==='skipped');
-    const stillPend = pending.filter(i=>!i.status||i.status==='pending');
-    const stillUnmat= unmatched.filter(i=>!i.status||i.status==='pending');
+    // Date range filter
+    const fromVal = document.getElementById('reconcileDateFrom')?.value;
+    const toVal   = document.getElementById('reconcileDateTo')?.value;
+    const fromMs  = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : null;
+    const toMs    = toVal   ? new Date(toVal   + 'T23:59:59').getTime() : null;
+    const inRange = (item, ...tsFields) => {
+      if (!fromMs && !toMs) return true;
+      for (const f of tsFields) {
+        const ms = item[f]?.toDate?.()?.getTime();
+        if (!ms) continue;
+        if (fromMs && ms < fromMs) return false;
+        if (toMs   && ms > toMs)   return false;
+        return true;
+      }
+      return !fromMs && !toMs; // if no timestamp found, only show when no filter active
+    };
+
+    // Build sections — apply date range to the most relevant timestamp per section
+    const approved  = pending.filter(i=>i.status==='approved'  && inRange(i,'approvedAt','createdAt'));
+    const resolved  = unmatched.filter(i=>i.status==='resolved' && inRange(i,'resolvedAt','createdAt'));
+    const skipPend  = pending.filter(i=>i.status==='skipped'   && inRange(i,'skippedAt','createdAt'));
+    const skipUnmat = unmatched.filter(i=>i.status==='skipped' && inRange(i,'skippedAt','createdAt'));
+    const stillPend = pending.filter(i=>(!i.status||i.status==='pending') && inRange(i,'createdAt'));
+    const stillUnmat= unmatched.filter(i=>(!i.status||i.status==='pending') && inRange(i,'createdAt'));
 
     const rowStyle = 'padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;display:flex;align-items:flex-start;gap:10px';
 
