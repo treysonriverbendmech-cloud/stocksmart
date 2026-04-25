@@ -4352,16 +4352,26 @@ window.runHCPSync = async function() {
     // Save unmatched items to Firestore using deterministic ID to prevent duplicates
     const { unmatched: unmatchedItems = [] } = result;
     for (const item of unmatchedItems) {
+      // Skip if this job was already processed (same guard as pending items above)
+      if (processedJobIds.has(item.jobId)) { skippedDupes++; continue; }
+
       // Build a stable doc ID from jobId + itemName so re-syncing doesn't duplicate
       const safeId = `${item.jobId||item.jobNumber}_${(item.itemName||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40)}`;
-      await setDoc(coDoc('hcpUnmatched', safeId), {
-        ...item, status: 'pending', createdAt: serverTimestamp()
-      }, { merge: true });
-      // Also mark jobId as synced so these unmatched jobs don't repeat next sync
+
+      // Only create if it doesn't already exist — never overwrite a skipped/resolved status
+      const existingDoc = await getDoc(coDoc('hcpUnmatched', safeId));
+      if (!existingDoc.exists()) {
+        await setDoc(coDoc('hcpUnmatched', safeId), {
+          ...item, status: 'pending', createdAt: serverTimestamp()
+        });
+      }
+
+      // Mark jobId as synced so this job never re-queues on next sync
       if (item.jobId) {
         await setDoc(coDoc('hcpSyncedJobs', String(item.jobId)), {
           syncedAt: serverTimestamp(), tech: item.tech || ''
         }, { merge: true });
+        processedJobIds.add(item.jobId); // update in-memory set too
       }
     }
 
