@@ -2,7 +2,7 @@
   "name": "Partlocker",
   "short_name": "Partlocker",
   "description": "HVAC & Mechanical Parts Inventory",
-  "start_url": "/",
+  "start_url": "/app.html",
   "display": "standalone",
   "background_color": "#0a0b0f",
   "theme_color": "#4F1DB5",
