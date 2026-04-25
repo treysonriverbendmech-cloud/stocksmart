@@ -1404,6 +1404,28 @@ window.joinCompany = async function() {
     });
     showCompanyScreen(false);
     showPendingScreen(currentUser);
+
+    // Notify the company admin by email
+    try {
+      const adminSnap = await getDocs(query(co('users'), where('role','==','admin')));
+      const adminDoc = adminSnap.docs[0];
+      if (adminDoc) {
+        const admin = adminDoc.data();
+        await fetch('/.netlify/functions/notify-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminEmail:   admin.email || '',
+            adminName:    admin.displayName || '',
+            techName:     currentUser.displayName || currentUser.email,
+            techEmail:    currentUser.email,
+            companyName:  companyDoc.data()?.name || '',
+            appUrl:       window.location.origin + '/app',
+          }),
+        });
+      }
+    } catch(e) { console.warn('Could not send admin notification:', e.message); }
+
     // Watch for approval
     const regRef = doc(db, 'companyRegistry', currentUser.uid);
     const unsub = onSnapshot(regRef, snapR => {
