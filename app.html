@@ -1533,7 +1533,7 @@ window.handleSignOut = async function() {
 
 // ─── User Management ──────────────────────────────────────────────────────────
 async function loadTeamUsers() {
-  const isAdmin = currentUser && currentUser.uid === adminUid;
+  const isAdmin = currentUserData?.role === 'admin';
   document.getElementById('pendingUsersSection').style.display = isAdmin ? '' : 'none';
   if (!isAdmin) return;
 
@@ -1561,23 +1561,35 @@ async function loadTeamUsers() {
     // Approved
     const approved = users.filter(u => u.status === 'approved');
     const approvedEl = document.getElementById('approvedUsersList');
-    approvedEl.innerHTML = approved.map(u => `
+    const roleLabel = r => r === 'admin' ? '🔑 Admin' : r === 'manager' ? '📋 Manager' : '🔧 Tech';
+    approvedEl.innerHTML = approved.map(u => {
+      const isSelf = u.id === currentUser.uid;
+      return `
       <div style="padding:10px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <div style="flex:1">
-            <div style="font-weight:600;font-size:13px">${xss(u.displayName||u.email)} ${u.role==='admin'?'<span style="font-size:10px;color:var(--purple)">ADMIN</span>':''}</div>
+            <div style="font-weight:600;font-size:13px">${xss(u.displayName||u.email)}${isSelf?' <span style="font-size:10px;color:var(--text-muted)">(you)</span>':''}</div>
             <div style="font-size:11px;color:var(--text-muted)">${xss(u.email)}</div>
           </div>
-          ${u.id !== currentUser.uid ? `<button class="btn btn-ghost btn-sm" onclick="removeUser('${u.id}')">Remove</button>` : ''}
+          ${!isSelf ? `<button class="btn btn-ghost btn-sm" onclick="removeUser('${u.id}')">Remove</button>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <label style="font-size:12px;color:var(--text-muted);flex-shrink:0">Role:</label>
+          <select class="fselect" style="flex:1;font-size:12px" onchange="changeUserRole('${u.id}', this.value)" ${isSelf?'disabled title="Cannot change your own role"':''}>
+            <option value="tech" ${(u.role||'tech')==='tech'?'selected':''}>🔧 Tech</option>
+            <option value="manager" ${u.role==='manager'?'selected':''}>📋 Manager</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>🔑 Admin</option>
+          </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:12px;color:var(--text-muted);flex-shrink:0">Their location:</label>
+          <label style="font-size:12px;color:var(--text-muted);flex-shrink:0">Location:</label>
           <select class="fselect" style="flex:1;font-size:12px" onchange="saveUserLocation('${u.id}', this.value)">
             <option value="">Not mapped</option>
             ${boxes.map(b=>`<option value="${b.id}" ${u.locationId===b.id?'selected':''}>${xss(b.name)}</option>`).join('')}
           </select>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(e) { console.warn('loadTeamUsers:', e.message); }
 }
 
@@ -1626,6 +1638,16 @@ window.saveUserLocation = async function(uid, locationId) {
     await updateDoc(coDoc('users',uid), { locationId });
     toast('Location mapped','ok');
   } catch(e) { toast('Failed to save location: '+e.message,'err'); }
+};
+
+window.changeUserRole = async function(uid, role) {
+  if (!requireAdmin('Changing user roles')) return;
+  try {
+    await updateDoc(coDoc('users', uid), { role });
+    await updateDoc(doc(db, 'companyRegistry', uid), { role });
+    toast(`Role updated to ${role}`,'ok');
+    loadTeamUsers();
+  } catch(e) { toast('Failed to update role: '+e.message,'err'); }
 };
 
 // ─── Admin UID — only this user can approve others ───────────────────────────
