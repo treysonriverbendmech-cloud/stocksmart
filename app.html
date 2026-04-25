@@ -4380,42 +4380,24 @@ window.runHCPSync = async function() {
       apiKey, lastSyncAt: result.syncedAt
     }, { merge: true });
 
-    const { jobsScanned=0, unmatched=[], statusesSeen=[], debugLineItem='', debugInfo={} } = result;
-    const statusNote = statusesSeen.length ? `<br><span style="font-size:11px;color:var(--text-muted)">Statuses: ${statusesSeen.join(', ')}</span>` : '';
-    const debugNote = [
-      debugInfo.totalPages ? `Pages: ${debugInfo.totalPages} · Jobs on p1: ${debugInfo.jobsOnPage1}` : '',
-      debugInfo.resolvedJobNum != null ? `Job# field value: <strong>${xss(String(debugInfo.resolvedJobNum))}</strong>` : '',
-      debugInfo.resolvedTech  ? `Tech field: <strong>${xss(String(debugInfo.resolvedTech).substring(0,200))}</strong>` : '',
-      debugInfo.rawJobKeys  ? `All job fields: ${xss(debugInfo.rawJobKeys)}`  : '',
-      debugInfo.rawJobSample ? `Raw sample: ${xss(String(debugInfo.rawJobSample).substring(0,400))}` : '',
-    ].filter(Boolean).map(t=>`<br><span style="font-size:11px;color:var(--text-muted);word-break:break-all">${t}</span>`).join('');
-    // Link opens the proper unmatched modal (not an inline toggle — that had an ID conflict with the modal's list)
-    const unmatchedNote = unmatched.length > 0
-      ? ` · <a href="#" onclick="event.preventDefault();openUnmatched()" style="color:var(--amber);text-decoration:underline">${unmatched.length} unmatched items</a>`
-      : '';
+    const { unmatched=[] } = result;
+    const newQueued = newPending.length - skippedDupes;
+    const newUnmatched = unmatched.filter(u => {
+      const safeId = `${u.jobId||u.jobNumber}_${(u.itemName||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40)}`;
+      return !processedJobIds.has(u.jobId);
+    }).length;
 
-    const unmatchedRows = unmatched.length > 0
-      ? `<div id="hcpSyncUnmatchedInline" class="hidden" style="margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
-          <div style="padding:8px 12px;background:var(--surface3);font-size:11px;font-weight:700;color:var(--amber);letter-spacing:0.05em">UNMATCHED ITEMS — not in your inventory</div>
-          ${unmatched.map(u=>`
-            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;gap:8px">
-              <div>
-                <div style="font-weight:600;color:var(--text)">${xss(u.itemName)}</div>
-                <div style="color:var(--text-muted)">Job #${xss(u.jobNumber)} · Part#: ${xss(u.partNumber)}</div>
-              </div>
-              <div style="flex-shrink:0;color:var(--text-muted)">Qty: ${u.quantity}</div>
-            </div>`).join('')}
-        </div>`
-      : '';
+    let statusMsg = '✓ Sync complete';
+    if (newQueued > 0)     statusMsg += ` · <strong>${newQueued} new items</strong> need approval`;
+    if (newUnmatched > 0)  statusMsg += ` · <strong style="color:var(--amber)">${newUnmatched} unmatched</strong> need review`;
+    if (newQueued === 0 && newUnmatched === 0) statusMsg += ' — nothing new';
 
-    const dupeNote = skippedDupes > 0 ? ` · ${skippedDupes} already processed` : '';
-    statusEl.innerHTML = `<span style="color:var(--green)">✓ Synced ${jobsScanned} jobs · ${newPending.length - skippedDupes} new deductions queued${xss(dupeNote)}${unmatchedNote}</span><br><span style="color:var(--text-muted)">${new Date().toLocaleString()}</span>${statusNote}${debugNote}${unmatchedRows}`;
+    statusEl.innerHTML = `<span style="color:var(--green)">${statusMsg}</span><br><span style="font-size:11px;color:var(--text-muted)">${new Date().toLocaleString()}</span>`;
 
-    // Badges auto-update via onSnapshot — no manual reload needed
-    if (newPending.length > 0) {
-      toast(`${newPending.length} pending deductions from HCP jobs`, 'ok');
+    if (newQueued > 0 || newUnmatched > 0) {
+      toast(`Sync done · ${newQueued} to approve · ${newUnmatched} unmatched`, 'ok');
     } else {
-      toast(`Sync complete — no new deductions`, 'ok');
+      toast('Sync complete — nothing new', 'ok');
     }
 
   } catch(e) {
