@@ -1361,7 +1361,10 @@ window.createCompany = async function() {
     // Create company doc
     await setDoc(doc(db, 'companies', cId), {
       name, inviteCode, plan: 'free',
-      ownerId: currentUser.uid, createdAt: serverTimestamp()
+      ownerId: currentUser.uid,
+      adminEmail: currentUser.email || '',
+      adminName: currentUser.displayName || '',
+      createdAt: serverTimestamp()
     });
     // Create company-scoped user record
     companyId = cId;
@@ -1405,22 +1408,21 @@ window.joinCompany = async function() {
     showCompanyScreen(false);
     showPendingScreen(currentUser);
 
-    // Notify the company admin by email
+    // Notify the company admin by email — read directly from company doc (no extra query needed)
     try {
-      const adminSnap = await getDocs(query(co('users'), where('role','==','admin')));
-      const adminDoc = adminSnap.docs[0];
-      if (adminDoc) {
-        const admin = adminDoc.data();
+      const cData = companyDoc.data() || {};
+      const adminEmail = cData.adminEmail || '';
+      if (adminEmail) {
         await fetch('/.netlify/functions/notify-admin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            adminEmail:   admin.email || '',
-            adminName:    admin.displayName || '',
-            techName:     currentUser.displayName || currentUser.email,
-            techEmail:    currentUser.email,
-            companyName:  companyDoc.data()?.name || '',
-            appUrl:       window.location.origin + '/app',
+            adminEmail,
+            adminName:   cData.adminName || '',
+            techName:    currentUser.displayName || currentUser.email,
+            techEmail:   currentUser.email,
+            companyName: cData.name || '',
+            appUrl:      window.location.origin + '/app',
           }),
         });
       }
