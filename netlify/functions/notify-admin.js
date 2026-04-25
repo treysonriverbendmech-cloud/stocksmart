@@ -57,7 +57,7 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Partlocker <notifications@getpartlocker.com>',
+        from: 'Partlocker <onboarding@resend.dev>',
         to: [adminEmail],
         subject: `${techName} is requesting access to ${displayCompany} on Partlocker`,
         html,
@@ -66,7 +66,8 @@ exports.handler = async (event) => {
 
     if (!resp.ok) {
       const err = await resp.text();
-      return { statusCode: 500, body: JSON.stringify({ error: 'Email send failed', detail: err }) };
+      console.error('Resend error:', resp.status, err);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Email send failed', status: resp.status, detail: err }) };
     }
 
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
