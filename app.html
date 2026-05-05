@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-title" content="Partlocker">
   <meta name="theme-color" content="#6366f1">
   <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <title>Partlocker</title>
   <link rel="icon" href="/icon-192.png">
   <style>
@@ -4535,6 +4535,17 @@ window.approveHCPDeduction = async function(pendingId) {
   const item = hcpPendingItems.find(i=>i._id===pendingId); if(!item) return;
   try {
     const part = parts.find(p=>p.id===item.partId);
+
+    // Guard: HCP sync must only deduct from personal van/truck locations,
+    // never from shared shop locations (upstairs, downstairs, connex, etc.)
+    if (part) {
+      const deductBox = boxes.find(b => b.id === part.boxId);
+      if (deductBox && !deductBox.personal) {
+        toast(`Cannot deduct from "${deductBox.name}" — that's a shared location. Transfer ${xss(part.name)} to the tech's van first, then approve.`, 'err');
+        return;
+      }
+    }
+
     const currentQty = part ? (parseInt(part.quantity)||0) : (item.currentQty||0);
     const newQty = Math.max(0, currentQty - item.quantity);
     // Deduct inventory
@@ -4936,11 +4947,12 @@ window.onXfrPartChange = function() {
   if (p.boxId) document.getElementById('xfrFrom').value = p.boxId;
   const qtyEl = document.getElementById('xfrQty');
   qtyEl.max = avail;
-  // Refrigerants default to full cylinder size; regular parts default to 1
-  if (pUnit && cylSize > 0) {
-    qtyEl.value = Math.min(cylSize, avail);
-  } else if (parseInt(qtyEl.value) > avail) {
-    qtyEl.value = avail > 0 ? avail : 1;
+  // Tracked-by-contents (refrigerant/chemical): default to full cylinder or full available qty
+  // Regular parts: always default to 1 to prevent accidental over-transfers
+  if (pUnit) {
+    qtyEl.value = cylSize > 0 ? Math.min(cylSize, avail) : (avail > 0 ? avail : 1);
+  } else {
+    qtyEl.value = 1;
   }
 };
 
@@ -4998,6 +5010,7 @@ window.confirmTransfer = async function() {
         quantity: xfrQty,
         boxId: toId,
         boxName: toBox ? toBox.name : null,
+        boxNumber: null,   // never carry over source shelf/box number
         minQty: p.minQty || 0,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
