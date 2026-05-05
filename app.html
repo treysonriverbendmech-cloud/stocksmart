@@ -568,6 +568,7 @@
         <button class="btn btn-ghost btn-sm" onclick="openReceipt()" title="Scan Receipt">📋 Scan Receipt</button>
         <button class="btn btn-ghost btn-sm" onclick="openReports()" title="Reports">📊 Reports</button>
         <button class="btn btn-ghost btn-sm" id="hcpPendingNavBtn" onclick="openHCPPending()" title="HCP Pending" style="display:none">🔗 HCP <span id="hcpPendingBadge" style="background:var(--red);color:#fff;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
+        <button class="btn btn-ghost btn-sm" id="corrNavBtn" onclick="openPendingCorrections()" title="Pending Corrections" style="display:none">📋 Corrections <span id="corrBadge" style="background:var(--amber);color:#000;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
         <button class="btn btn-amber btn-sm" id="unmatchedNavBtn" onclick="openUnmatched()" title="Unmatched Items" style="display:none">⚠️ Unmatched <span id="unmatchedBadge" style="background:var(--amber);color:#000;border-radius:100px;font-size:10px;padding:1px 6px;margin-left:2px">0</span></button>
         <button class="btn btn-ghost btn-icon" title="Settings" onclick="openSettings()">
           <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1245,7 +1246,7 @@
         </select>
       </div>
       <div class="fgroup">
-        <label class="flabel">Notes <span style="font-size:11px;color:var(--text-muted)">(optional)</span></label>
+        <label class="flabel">Notes / Job # <span id="xfrNotesReq" style="color:var(--red)">*</span><span id="xfrNotesOpt" style="font-size:11px;color:var(--text-muted)">(optional for admins)</span></label>
         <input id="xfrNotes" class="finput" type="text" placeholder="Job # or reason for transfer">
       </div>
       <div id="xfrRestrictionNotice" style="display:none;font-size:12px;color:var(--amber);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:8px 10px"></div>
@@ -1254,6 +1255,52 @@
         <button class="btn btn-ghost" style="flex:1" onclick="closeModal('transferModal')">Cancel</button>
         <button class="btn btn-primary btn-lg" style="flex:2" onclick="confirmTransfer()">🔄 Confirm Transfer</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ CORRECTION REQUEST MODAL (tech submits) ═══════ -->
+<div id="correctionModal" class="overlay hidden" onclick="overlayClick(event,'correctionModal')">
+  <div class="sheet" onclick="event.stopPropagation()" style="max-width:420px">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">📋 Request Inventory Correction</span>
+      <button class="close-x" onclick="closeModal('correctionModal')">✕</button>
+    </div>
+    <div class="form-section">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:12px">
+        <strong id="corrPartName">Part</strong>
+        <div style="color:var(--text-muted);margin-top:2px">Current quantity on record: <strong id="corrCurrentQty"></strong></div>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Actual Count <span style="color:var(--red)">*</span></label>
+        <input id="corrNewQty" class="finput" type="number" min="0" style="max-width:140px" placeholder="Enter your actual count">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Reason <span style="color:var(--red)">*</span></label>
+        <input id="corrReason" class="finput" type="text" placeholder="e.g. Physical count on 5/4, received from supply house…">
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">Your correction will be reviewed by an admin before the quantity is updated.</p>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeModal('correctionModal')">Cancel</button>
+        <button class="btn btn-primary btn-lg" style="flex:2" onclick="submitCorrectionRequest()">📋 Submit Request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ PENDING CORRECTIONS MODAL (admin reviews) ═══════ -->
+<div id="pendingCorrectionsModal" class="overlay hidden" onclick="overlayClick(event,'pendingCorrectionsModal')">
+  <div class="sheet" onclick="event.stopPropagation()" style="max-width:520px">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">📋 Pending Inventory Corrections</span>
+      <button class="close-x" onclick="closeModal('pendingCorrectionsModal')">✕</button>
+    </div>
+    <div class="form-section">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Techs have submitted these quantity corrections for your review. Approve to apply the change, or reject to dismiss it.</div>
+      <div id="pendingCorrList" style="display:flex;flex-direction:column;gap:10px;max-height:65vh;overflow-y:auto"></div>
+      <div id="pendingCorrEmpty" class="hidden" style="text-align:center;padding:32px;color:var(--text-muted)">No pending corrections — you're all caught up!</div>
     </div>
   </div>
 </div>
@@ -1627,6 +1674,26 @@ function requireAdmin(label = 'This action') {
   return true;
 }
 
+// ─── Role / permission helpers ────────────────────────────────────────────────
+function isAdminUser() {
+  return currentUserData?.role === 'admin' || currentUserData?.role === 'owner';
+}
+function myLocationId() {
+  return currentUserData?.locationId || null;
+}
+// Returns true if the part lives in this tech's own van
+function isOwnVanPart(p) {
+  if (isAdminUser()) return true; // admins "own" everything
+  const myLoc = myLocationId();
+  return myLoc && p.boxId === myLoc;
+}
+// Returns true if the location is a shared shop/storage (not a personal van)
+function isSharedLocation(boxId) {
+  if (!boxId) return false;
+  const box = boxes.find(b => b.id === boxId);
+  return box ? !box.personal : false;
+}
+
 window.approveUser = async function(uid) {
   if (!requireAdmin('Approving users')) return;
   try {
@@ -1858,6 +1925,9 @@ function startListeners() {
       .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
     updateUnmatchedBadge();
   }, err => console.warn('hcpUnmatched listener:', err));
+
+  // Pending correction requests (admins see the badge; techs submit into this collection)
+  subscribeCorrections();
 
   seedDefaultLocations();
 }
@@ -2366,6 +2436,13 @@ function clearAiResults() {
 window.clearAiSearch = function() { closeAiBar(); };
 
 window.openAdd = function(id=null) {
+  // Permission check: techs can only edit parts in their own van
+  if (id && !isAdminUser()) {
+    const p = parts.find(i=>i.id===id);
+    if (p && !isOwnVanPart(p)) {
+      toast('You can only edit parts in your own van','err'); return;
+    }
+  }
   editingId = id;
   document.getElementById('addTitle').textContent = id ? 'Edit Part' : 'Add Part';
   populateBoxSelect();
@@ -2753,19 +2830,32 @@ window.openDetail = function(id) {
       </div>
     </div>
     <div class="detail-actions">
-      ${(()=>{ const pu=p.trackUnit||(p.isRefrigerant?'lbs':null); const e=pu==='lbs'?'🧊':pu==='oz'?'🧪':''; return `
-      <button class="btn btn-success" onclick="openQty('${id}','use')">${pu?`${e} Use ${pu}`:'− Use'}</button>
-      <button class="btn btn-amber" onclick="openQty('${id}','add')">${pu?`+ Refill`:'+ Restock'}</button>`;})()}
-
-      <button class="btn btn-ghost" onclick="closeModal('detailModal');openTransferForPart('${id}')">🔄 Transfer</button>
-      <button class="btn btn-ghost" onclick="closeModal('detailModal');openAdd('${id}')">✏ Edit</button>
-      <button class="btn btn-danger" onclick="deleteItem('${id}')">🗑</button>
+      ${(()=>{
+        const pu  = p.trackUnit||(p.isRefrigerant?'lbs':null);
+        const e   = pu==='lbs'?'🧊':pu==='oz'?'🧪':'';
+        const adm = isAdminUser();
+        const own = isOwnVanPart(p);
+        let btns  = '';
+        // Use/Pull — only on own van (or admin anywhere)
+        if (adm || own) btns += `<button class="btn btn-success" onclick="openQty('${id}','use')">${pu?`${e} Use ${pu}`:'− Use'}</button>`;
+        // Restock — admin does it directly; techs submit a correction request
+        if (adm)       btns += `<button class="btn btn-amber" onclick="openQty('${id}','add')">${pu?`+ Refill`:'+ Restock'}</button>`;
+        else if (own)  btns += `<button class="btn btn-amber" onclick="closeModal('detailModal');openCorrectionRequest('${id}')">📋 Request Correction</button>`;
+        // Transfer — always available (restrictions enforced inside the dialog)
+        btns += `<button class="btn btn-ghost" onclick="closeModal('detailModal');openTransferForPart('${id}')">🔄 Transfer</button>`;
+        // Edit — own van or admin only
+        if (adm || own) btns += `<button class="btn btn-ghost" onclick="closeModal('detailModal');openAdd('${id}')">✏ Edit</button>`;
+        // Delete — admin only
+        if (adm) btns += `<button class="btn btn-danger" onclick="deleteItem('${id}')">🗑</button>`;
+        return btns;
+      })()}
     </div>`;
   showModal('detailModal');
 };
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 window.deleteItem = async function(id) {
+  if (!isAdminUser()) { toast('Only admins can delete parts','err'); return; }
   if (!confirm('Delete this part? This cannot be undone.')) return;
   try {
     await deleteDoc(coDoc('parts',id));
@@ -2777,14 +2867,18 @@ window.deleteItem = async function(id) {
 window.openQty = function(partId, type) {
   const p = parts.find(i=>i.id===partId); if(!p) return;
 
-  // Location guard — techs can only pull from their own van
-  if (type === 'use' && currentUserData && currentUserData.role !== 'admin' && currentUser && currentUser.uid !== adminUid) {
-    const myLocationId = currentUserData.locationId || null;
-    const partLocationId = p.boxId || null;
-    if (myLocationId && partLocationId && myLocationId !== partLocationId) {
-      const myLoc  = boxes.find(b => b.id === myLocationId);
-      const partLoc = boxes.find(b => b.id === partLocationId);
-      toast(`This part is in ${partLoc ? partLoc.name : 'another location'} — you can only pull from ${myLoc ? myLoc.name : 'your own van'}`, 'err');
+  // Permission guards for non-admins
+  if (!isAdminUser()) {
+    const own = isOwnVanPart(p);
+    if (!own) {
+      const partLoc = boxes.find(b => b.id === p.boxId);
+      const myLoc   = boxes.find(b => b.id === myLocationId());
+      toast(`This part is in ${partLoc?.name||'another location'} — you can only pull from ${myLoc?.name||'your own van'}`, 'err');
+      return;
+    }
+    // Techs cannot directly restock — they must submit a correction request
+    if (type === 'add') {
+      toast('Use "Request Correction" to adjust your van quantity — changes need admin approval','err');
       return;
     }
   }
@@ -4840,6 +4934,139 @@ window.skipHCPDeduction = async function(pendingId) {
   } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
+// ─── Inventory Correction Requests ────────────────────────────────────────────
+let pendingCorrections = [];
+let _unsubCorrections  = null;
+let correctionPartId   = null;
+
+function subscribeCorrections() {
+  if (_unsubCorrections) return;
+  _unsubCorrections = onSnapshot(co('pendingCorrections'), snap => {
+    pendingCorrections = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(c => c.status === 'pending')
+      .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    updateCorrectionBadge();
+  }, err => console.warn('pendingCorrections listener:', err));
+}
+
+function updateCorrectionBadge() {
+  const count = pendingCorrections.length;
+  const btn   = document.getElementById('corrNavBtn');
+  const badge = document.getElementById('corrBadge');
+  if (btn) btn.style.display = (isAdminUser() && count > 0) ? '' : 'none';
+  if (badge) badge.textContent = count;
+}
+
+window.openCorrectionRequest = function(partId) {
+  const p = parts.find(i=>i.id===partId); if(!p) return;
+  correctionPartId = partId;
+  document.getElementById('corrPartName').textContent    = p.name;
+  document.getElementById('corrCurrentQty').textContent  = (p.quantity||0) + (p.trackUnit||(p.isRefrigerant?'lbs':'')?` ${p.trackUnit||(p.isRefrigerant?'lbs':'')}`:'');
+  document.getElementById('corrNewQty').value            = p.quantity||0;
+  document.getElementById('corrReason').value            = '';
+  showModal('correctionModal');
+};
+
+window.submitCorrectionRequest = async function() {
+  if (!correctionPartId) return;
+  const p       = parts.find(i=>i.id===correctionPartId); if(!p) return;
+  const newQty  = parseInt(document.getElementById('corrNewQty').value);
+  const reason  = document.getElementById('corrReason').value.trim();
+  if (isNaN(newQty) || newQty < 0) { toast('Enter a valid quantity','err'); return; }
+  if (!reason) { toast('A reason is required','err'); document.getElementById('corrReason').focus(); return; }
+  try {
+    await addDoc(co('pendingCorrections'), {
+      partId:        correctionPartId,
+      partName:      p.name,
+      partNumber:    p.partNumber || '',
+      locationId:    p.boxId || null,
+      locationName:  p.boxName || null,
+      currentQty:    p.quantity || 0,
+      newQty,
+      delta:         newQty - (p.quantity||0),
+      submittedBy:   currentUser?.displayName || currentUser?.email || 'Unknown',
+      submittedById: currentUser?.uid || '',
+      reason,
+      status:        'pending',
+      createdAt:     serverTimestamp()
+    });
+    toast('Correction request submitted — pending admin approval','ok');
+    closeModal('correctionModal');
+  } catch(e) { toast('Submit failed: '+e.message,'err'); }
+};
+
+window.openPendingCorrections = function() {
+  renderCorrectionsList();
+  showModal('pendingCorrectionsModal');
+};
+
+function renderCorrectionsList() {
+  const listEl  = document.getElementById('pendingCorrList');
+  const emptyEl = document.getElementById('pendingCorrEmpty');
+  if (!pendingCorrections.length) {
+    listEl.innerHTML = ''; emptyEl.classList.remove('hidden'); return;
+  }
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = pendingCorrections.map(c => {
+    const date    = c.createdAt?.seconds ? new Date(c.createdAt.seconds*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+    const delta   = c.delta >= 0 ? `+${c.delta}` : `${c.delta}`;
+    const dColor  = c.delta >= 0 ? 'var(--green)' : 'var(--red)';
+    const locName = c.locationName || '—';
+    return `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+      <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:6px">${xss(c.partName)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;margin-bottom:8px;padding:8px;background:var(--surface);border-radius:6px">
+        <div><span style="color:var(--text-muted)">Tech</span> <strong>${xss(c.submittedBy)}</strong></div>
+        <div><span style="color:var(--text-muted)">Location</span> <strong>${xss(locName)}</strong></div>
+        <div><span style="color:var(--text-muted)">Was</span> <strong>${c.currentQty}</strong></div>
+        <div><span style="color:var(--text-muted)">Requested</span> <strong>${c.newQty}</strong> <span style="color:${dColor};font-weight:700">(${delta})</span></div>
+        <div style="grid-column:1/-1"><span style="color:var(--text-muted)">Reason</span> ${xss(c.reason)}</div>
+        <div><span style="color:var(--text-muted)">Date</span> ${date}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="rejectCorrection('${c.id}')">✕ Reject</button>
+        <button class="btn btn-success btn-sm" style="flex:2" onclick="approveCorrection('${c.id}')">✓ Approve</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.approveCorrection = async function(corrId) {
+  const c = pendingCorrections.find(x=>x.id===corrId); if(!c) return;
+  try {
+    await updateDoc(coDoc('parts', c.partId), { quantity: c.newQty, updatedAt: serverTimestamp() });
+    await addDoc(co('transactions'), {
+      partId: c.partId, partName: c.partName, partNumber: c.partNumber||'',
+      type: c.delta >= 0 ? 'restock' : 'adjustment',
+      quantity: Math.abs(c.delta),
+      pulledBy: c.submittedBy,
+      locationId: c.locationId||null, locationName: c.locationName||null,
+      notes: `Correction approved: ${c.reason}`,
+      source: 'correction', createdAt: serverTimestamp()
+    });
+    await updateDoc(coDoc('pendingCorrections', corrId), {
+      status:'approved', approvedAt: serverTimestamp(),
+      approvedBy: currentUser?.displayName || currentUser?.email
+    });
+    toast(`Approved — ${c.partName} updated to ${c.newQty}`,'ok');
+    renderCorrectionsList();
+    updateCorrectionBadge();
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
+window.rejectCorrection = async function(corrId) {
+  try {
+    await updateDoc(coDoc('pendingCorrections', corrId), {
+      status:'rejected', rejectedAt: serverTimestamp(),
+      rejectedBy: currentUser?.displayName || currentUser?.email
+    });
+    toast('Correction rejected','ok');
+    renderCorrectionsList();
+    updateCorrectionBadge();
+  } catch(e) { toast('Error: '+e.message,'err'); }
+};
+
 // Called from part detail — pre-selects the part and its current location
 window.openTransferForPart = function(partId) {
   openTransfer();
@@ -4969,6 +5196,8 @@ window.confirmTransfer = async function() {
   if (fromId === toId) { toast('From and To locations must be different','err'); return; }
   if (!tech)      { toast('Select who is doing the transfer','err'); return; }
   if (xfrQty < 1) { toast('Qty must be at least 1','err'); return; }
+  // Techs must include a note (job # or reason) for every transfer
+  if (!isAdminUser() && !notes) { toast('A job # or reason is required for transfers','err'); document.getElementById('xfrNotes').focus(); return; }
 
   // ── Transfer restriction: personal vans can only be pulled from by their owner ──
   const isAdmin = currentUserData?.role === 'admin' || currentUserData?.role === 'owner';
