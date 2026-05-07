@@ -857,7 +857,11 @@
     </div>
     <!-- Locations tab -->
     <div class="stab-panel" id="tabBoxes">
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Manage your storage locations (e.g. Shop, Van 1, Storage 2). Parts also have a separate Box # field for the specific bin or box within that location.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">Manage your storage locations (e.g. Shop, Van 1, Storage 2). Parts also have a separate Box # field for the specific bin or box within that location.</p>
+      <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;line-height:1.6">
+        🔓 <strong>Unlocked</strong> = personal van/truck — HCP sync <strong>can</strong> deduct inventory from this location.<br>
+        🔒 <strong>Locked</strong> = shared shop/storage — HCP sync will <strong>not</strong> deduct from this location. Click the lock to toggle.
+      </div>
       <div class="box-list" id="boxList"></div>
       <div class="add-box-row" style="margin-top:16px">
         <input class="finput" id="newBoxName" placeholder="Location name (e.g. Van 1, Shop)" style="flex:1">
@@ -3240,9 +3244,9 @@ function renderBoxList() {
     : boxes.map(b=>`<div class="box-item">
         <div class="box-item-info">
           <div class="box-item-name">${b.personal?'🚐':'📍'} ${xss(b.name)}</div>
-          <div class="box-item-loc" style="font-size:11px;color:var(--text-muted)">${b.personal?'Personal (Van/Truck) — transfer restriction applies':'Shared location'}</div>
+          <div class="box-item-loc" style="font-size:11px;color:var(--text-muted)">${b.personal?'Personal van/truck — HCP deductions allowed':'Shared shop/storage — HCP will not deduct here'}</div>
         </div>
-        <button class="btn btn-ghost btn-sm" title="${b.personal?'Mark as shared':'Mark as personal van/truck'}" onclick="toggleBoxPersonal('${b.id}',${!b.personal})" style="font-size:11px;white-space:nowrap">${b.personal?'🔓 Shared':'🚐 Van'}</button>
+        <button class="btn btn-ghost btn-sm" title="${b.personal?'Click to lock (mark as shared shop)':'Click to unlock (mark as personal van/truck)'}" onclick="toggleBoxPersonal('${b.id}',${!b.personal})" style="font-size:13px;white-space:nowrap">${b.personal?'🔓':'🔒'}</button>
         <button class="btn btn-danger btn-sm" onclick="deleteBox('${b.id}')">Delete</button>
       </div>`).join('');
 }
