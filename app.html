@@ -3193,8 +3193,9 @@ function renderCatEditor() {
         <button class="btn btn-ghost btn-sm" onclick="resetCat('${cat}')">Reset defaults</button>
       </div>
       <div class="sub-list" id="subList_${cat}">
-        ${subs.map((s,i)=>`<div class="sub-item">
-          <span>${xss(s)}</span>
+        ${subs.map((s,i)=>`<div class="sub-item" id="subitem_${cat}_${i}">
+          <span id="sublabel_${cat}_${i}">${xss(s)}</span>
+          <button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:11px;margin-left:auto" onclick="editSub('${cat}',${i})" title="Rename">✏</button>
           <button class="sub-del" onclick="deleteSub('${cat}',${i})" title="Remove">×</button>
         </div>`).join('')}
       </div>
@@ -3225,6 +3226,29 @@ window.deleteSub = async function(cat, idx) {
     await setDoc(coDoc('settings','app'), { subcategories: settings.subcategories }, { merge: true });
   } catch(e) { toast('Auto-save failed: '+e.message,'err'); }
 };
+window.editSub = function(cat, idx) {
+  const item  = document.getElementById(`subitem_${cat}_${idx}`);
+  const label = document.getElementById(`sublabel_${cat}_${idx}`);
+  const cur   = settings.subcategories[cat][idx];
+  // Replace the label with an inline input
+  item.innerHTML = `
+    <input id="subRenameInput_${cat}_${idx}" class="finput" value="${xss(cur)}" style="flex:1;padding:4px 8px;font-size:13px" onkeydown="if(event.key==='Enter')saveSubRename('${cat}',${idx});if(event.key==='Escape')renderCatEditor()">
+    <button class="btn btn-primary btn-sm" style="padding:4px 10px;font-size:12px" onclick="saveSubRename('${cat}',${idx})">Save</button>
+    <button class="btn btn-ghost btn-sm" style="padding:4px 8px;font-size:12px" onclick="renderCatEditor()">Cancel</button>`;
+  document.getElementById(`subRenameInput_${cat}_${idx}`)?.focus();
+};
+
+window.saveSubRename = async function(cat, idx) {
+  const input = document.getElementById(`subRenameInput_${cat}_${idx}`);
+  const newName = input ? input.value.trim() : '';
+  if (!newName) { toast('Name cannot be empty','err'); return; }
+  settings.subcategories[cat][idx] = newName;
+  renderCatEditor();
+  try {
+    await setDoc(coDoc('settings','app'), { subcategories: settings.subcategories }, { merge: true });
+  } catch(e) { toast('Save failed: '+e.message,'err'); }
+};
+
 window.resetCat = function(cat) {
   settings.subcategories[cat] = [...DEFAULT_SUBS[cat]]; renderCatEditor();
 };
