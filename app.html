@@ -4634,8 +4634,21 @@ window.approveHCPDeduction = async function(pendingId) {
   try {
     const part = parts.find(p=>p.id===item.partId);
 
-    // Guard: HCP sync must only deduct from personal van/truck locations,
-    // never from shared shop locations (upstairs, downstairs, connex, etc.)
+    // Guard 1: Tech must be mapped to a van — if locationId is missing, block the approval
+    if (!item.locationId) {
+      toast(`${item.tech||'This tech'} is not mapped to a van. Go to Settings → Team, assign them a location, then re-sync.`, 'err');
+      return;
+    }
+
+    // Guard 2: The matched part must live in the job tech's mapped van — not any other van or shop
+    if (part && part.boxId !== item.locationId) {
+      const wrongBox = boxes.find(b => b.id === part.boxId);
+      const rightBox = boxes.find(b => b.id === item.locationId);
+      toast(`Part is in "${wrongBox?.name||'wrong location'}", not ${item.tech}'s van (${rightBox?.name||item.locationId}). Transfer it to the correct van first, then approve.`, 'err');
+      return;
+    }
+
+    // Guard 3: Never deduct from a shared/shop location
     if (part) {
       const deductBox = boxes.find(b => b.id === part.boxId);
       if (deductBox && !deductBox.personal) {
