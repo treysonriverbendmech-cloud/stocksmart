@@ -4582,6 +4582,35 @@ window.openHCPPending = function() {
   showModal('hcpPendingModal');
 };
 
+// Resolve a tech name to their current van location (live lookup, not stale stored value)
+function resolveTechLocation(techStr) {
+  const names = (techStr||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  for (const name of names) {
+    const u = companyUsers.find(u =>
+      (u.displayName||'').trim().toLowerCase() === name ||
+      (u.email||'').trim().toLowerCase() === name
+    );
+    if (u?.locationId) {
+      const box = boxes.find(b => b.id === u.locationId);
+      return { locationId: u.locationId, locationName: box?.name || '' };
+    }
+  }
+  return null;
+}
+
+// Find the part in a specific van (live lookup)
+function findPartInVan(item, locationId) {
+  return parts.find(p =>
+    p.boxId === locationId &&
+    (
+      (item.hcpUuid    && p.hcpUuid    && p.hcpUuid    === item.hcpUuid) ||
+      (item.partNumber && p.partNumber && p.partNumber.trim().toLowerCase() === (item.partNumber||'').trim().toLowerCase()) ||
+      p.id === item.partId ||
+      p.name.trim().toLowerCase() === (item.partName||'').trim().toLowerCase()
+    )
+  );
+}
+
 function renderHCPPendingList() {
   const listEl  = document.getElementById('hcpPendingList');
   const emptyEl = document.getElementById('hcpPendingEmpty');
@@ -4591,22 +4620,35 @@ function renderHCPPendingList() {
   emptyEl.classList.add('hidden');
   listEl.innerHTML = hcpPendingItems.map(item => {
     const date = item.completedAt ? new Date(item.completedAt).toLocaleDateString() : '—';
-    const afterQty = Math.max(0, (item.currentQty||0) - (item.quantity||1));
     const rawJobNum = item.jobNumber || item.jobId || '';
     const jobNumDisplay = rawJobNum.startsWith('job_') ? `#…${rawJobNum.slice(-8)}` : (rawJobNum || '—');
     const matchBadge = item.matchType==='hcpUuid'
       ? `<span style="font-size:10px;background:rgba(99,102,241,.15);color:var(--accent);border-radius:4px;padding:1px 6px">✓ UUID match</span>`
       : `<span style="font-size:10px;background:rgba(245,158,11,.15);color:var(--amber);border-radius:4px;padding:1px 6px">Part # match</span>`;
-    const techLabel  = item.tech && item.tech !== 'Unknown' ? xss(item.tech) : '<span style="color:var(--amber)">Tech unknown</span>';
-    const locLabel   = item.locationName
-      ? `<span style="color:var(--accent)">🚐 ${xss(item.locationName)}</span>`
-      : '<span style="color:var(--text-muted)">Location not mapped</span>';
+    const techLabel = item.tech && item.tech !== 'Unknown' ? xss(item.tech) : '<span style="color:var(--amber)">Tech unknown</span>';
+
+    // Live location lookup — don't rely on stale stored locationName
+    const techLoc   = resolveTechLocation(item.tech);
+    const vanPart   = techLoc ? findPartInVan(item, techLoc.locationId) : null;
+    const vanStock  = vanPart ? (parseInt(vanPart.quantity)||0) : null;
+    const afterQty  = vanStock !== null ? Math.max(0, vanStock - (item.quantity||1)) : null;
+
+    let locLabel, stockLine;
+    if (!techLoc) {
+      locLabel  = `<span style="color:var(--red)">⚠ Not mapped — go to Settings → Team</span>`;
+      stockLine = `<span style="color:var(--amber)">Cannot approve until tech is mapped to a van</span>`;
+    } else if (!vanPart) {
+      locLabel  = `<span style="color:var(--accent)">🚐 ${xss(techLoc.locationName)}</span>`;
+      stockLine = `<span style="color:var(--amber)">⚠ Part not found in ${xss(techLoc.locationName)} — transfer it there first</span>`;
+    } else {
+      locLabel  = `<span style="color:var(--accent)">🚐 ${xss(techLoc.locationName)}</span>`;
+      stockLine = `Qty used: <strong>${item.quantity}</strong> &nbsp;·&nbsp; Stock in van: <strong>${vanStock}</strong> → <strong style="color:${afterQty<=0?'var(--red)':'var(--text)'}">${afterQty}</strong>${item.unitPrice > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--green);font-weight:700">$${(+(item.unitPrice||0)).toFixed(2)}</span>` : ''}`;
+    }
+
     return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;color:var(--text);font-size:14px">${xss(item.partName)}</div>
-        </div>
+        <div style="font-weight:700;color:var(--text);font-size:14px">${xss(item.partName)}</div>
         ${matchBadge}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;margin-bottom:8px;padding:8px;background:var(--surface);border-radius:6px">
@@ -4615,12 +4657,7 @@ function renderHCPPendingList() {
         <div><span style="color:var(--text-muted)">Tech</span> ${techLabel}</div>
         <div>${locLabel}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;font-size:13px;margin-bottom:12px">
-        <span>Qty used: <strong>${item.quantity}</strong></span>
-        <span style="color:var(--text-muted)">→</span>
-        <span>Stock: <strong>${item.currentQty}</strong> → <strong style="color:${afterQty<=0?'var(--red)':'var(--text)'}">${afterQty}</strong></span>
-        ${item.unitPrice > 0 ? `<span style="color:var(--text-muted)">·</span><span style="color:var(--green);font-weight:700">$${(+(item.unitPrice||0)).toFixed(2)}</span>` : ''}
-      </div>
+      <div style="font-size:13px;margin-bottom:12px">${stockLine}</div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" style="flex:1" onclick="skipHCPDeduction('${item._id}')">Skip</button>
         <button class="btn btn-success btn-sm" style="flex:2" onclick="approveHCPDeduction('${item._id}')">✓ Approve &amp; Deduct</button>
@@ -4632,42 +4669,41 @@ function renderHCPPendingList() {
 window.approveHCPDeduction = async function(pendingId) {
   const item = hcpPendingItems.find(i=>i._id===pendingId); if(!item) return;
   try {
-    const part = parts.find(p=>p.id===item.partId);
+    // Always do a live location + part lookup at approval time so stale stored
+    // values (from before the tech was mapped) don't cause wrong-van deductions
+    const techLoc = resolveTechLocation(item.tech);
 
-    // Guard 1: Tech must be mapped to a van — if locationId is missing, block the approval
-    if (!item.locationId) {
-      toast(`${item.tech||'This tech'} is not mapped to a van. Go to Settings → Team, assign them a location, then re-sync.`, 'err');
+    // Guard 1: Tech must be mapped to a van right now
+    if (!techLoc) {
+      toast(`${item.tech||'This tech'} is not mapped to a van. Go to Settings → Team, assign them a location, then approve.`, 'err');
       return;
     }
 
-    // Guard 2: The matched part must live in the job tech's mapped van — not any other van or shop
-    if (part && part.boxId !== item.locationId) {
-      const wrongBox = boxes.find(b => b.id === part.boxId);
-      const rightBox = boxes.find(b => b.id === item.locationId);
-      toast(`Part is in "${wrongBox?.name||'wrong location'}", not ${item.tech}'s van (${rightBox?.name||item.locationId}). Transfer it to the correct van first, then approve.`, 'err');
+    // Guard 2: Part must exist in the tech's van
+    const vanPart = findPartInVan(item, techLoc.locationId);
+    if (!vanPart) {
+      toast(`${item.partName} is not in ${item.tech}'s van (${techLoc.locationName}). Transfer it there first, then approve.`, 'err');
       return;
     }
 
-    // Guard 3: Never deduct from a shared/shop location
-    if (part) {
-      const deductBox = boxes.find(b => b.id === part.boxId);
-      if (deductBox && !deductBox.personal) {
-        toast(`Cannot deduct from "${deductBox.name}" — that's a shared location. Transfer ${xss(part.name)} to the tech's van first, then approve.`, 'err');
-        return;
-      }
+    // Guard 3: That van must be marked as a personal van/truck (unlocked)
+    const deductBox = boxes.find(b => b.id === vanPart.boxId);
+    if (deductBox && !deductBox.personal) {
+      toast(`Cannot deduct from "${deductBox.name}" — mark it as a van/truck in Settings → Locations first.`, 'err');
+      return;
     }
 
-    const currentQty = part ? (parseInt(part.quantity)||0) : (item.currentQty||0);
+    const currentQty = parseInt(vanPart.quantity)||0;
     const newQty = Math.max(0, currentQty - item.quantity);
-    // Deduct inventory
-    await updateDoc(coDoc('parts',item.partId), { quantity: newQty, updatedAt: serverTimestamp() });
-    // Log transaction — prefer location stored on the pending item (tech's van)
+    // Deduct from the correct van part (live-resolved, not stale stored partId)
+    await updateDoc(coDoc('parts', vanPart.id), { quantity: newQty, updatedAt: serverTimestamp() });
+    // Log transaction
     await addDoc(co('transactions'), {
-      partId: item.partId, partName: item.partName, partNumber: item.partNumber||'',
+      partId: vanPart.id, partName: vanPart.name, partNumber: vanPart.partNumber||'',
       type: 'use', quantity: item.quantity,
       pulledBy: item.tech, jobRef: `HCP Job #${item.jobNumber}`,
-      locationId:   item.locationId   || part?.boxId   || null,
-      locationName: item.locationName || part?.boxName || null,
+      locationId:   techLoc.locationId,
+      locationName: techLoc.locationName,
       source: 'hcp', hcpJobId: item.jobId,
       createdAt: serverTimestamp()
     });
