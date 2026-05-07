@@ -3217,8 +3217,13 @@ window.addSub = function(cat) {
   }
   input.value=''; renderCatEditor();
 };
-window.deleteSub = function(cat, idx) {
-  settings.subcategories[cat].splice(idx,1); renderCatEditor();
+window.deleteSub = async function(cat, idx) {
+  settings.subcategories[cat].splice(idx, 1);
+  renderCatEditor();
+  // Auto-save immediately so the deletion sticks without a separate Save click
+  try {
+    await setDoc(coDoc('settings','app'), { subcategories: settings.subcategories }, { merge: true });
+  } catch(e) { toast('Auto-save failed: '+e.message,'err'); }
 };
 window.resetCat = function(cat) {
   settings.subcategories[cat] = [...DEFAULT_SUBS[cat]]; renderCatEditor();
