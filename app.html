@@ -1732,6 +1732,9 @@ window.saveUserLocation = async function(uid, locationId) {
   if (!requireAdmin('Mapping locations')) return;
   try {
     await updateDoc(coDoc('users',uid), { locationId });
+    // Refresh the team cache so HCP resolution picks up the new mapping immediately
+    const u = teamUsersCache.find(u => u.id === uid);
+    if (u) u.locationId = locationId;
     toast('Location mapped','ok');
   } catch(e) { toast('Failed to save location: '+e.message,'err'); }
 };
@@ -1852,7 +1855,8 @@ let filtered    = [];
 let _dupeFilterIds = null; // when set, applyFilters shows only these IDs (duplicate search mode)
 let settings    = { subcategories: JSON.parse(JSON.stringify(DEFAULT_SUBS)), companyName:'', appSubtitle:'', logoUrl:'', techs:[] };
 let transactions = [];
-let companyUsers = []; // cached list of approved user displayNames for report filters
+let companyUsers    = []; // cached list of approved user displayNames for report filters
+let teamUsersCache  = []; // full user objects {displayName, email, locationId} — used for HCP location resolution
 let currentView  = 'grid';
 let photoData    = null;
 let editingId    = null;
@@ -1932,6 +1936,13 @@ function startListeners() {
 
   // Pending correction requests (admins see the badge; techs submit into this collection)
   subscribeCorrections();
+
+  // Keep full user objects (with locationId) fresh so HCP location resolution always works
+  getDocs(co('users')).then(snap => {
+    teamUsersCache = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(u => u.status === 'approved');
+  }).catch(e => console.warn('teamUsersCache load:', e.message));
 
   seedDefaultLocations();
 }
@@ -4611,11 +4622,11 @@ window.openHCPPending = function() {
   showModal('hcpPendingModal');
 };
 
-// Resolve a tech name to their current van location (live lookup, not stale stored value)
+// Resolve a tech name to their current van location using the full user cache
 function resolveTechLocation(techStr) {
   const names = (techStr||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   for (const name of names) {
-    const u = companyUsers.find(u =>
+    const u = teamUsersCache.find(u =>
       (u.displayName||'').trim().toLowerCase() === name ||
       (u.email||'').trim().toLowerCase() === name
     );
