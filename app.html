@@ -4981,30 +4981,43 @@ window.approveUnmatchedMatch = async function(id, partId) {
   const item = hcpUnmatchedItems.find(i=>i._id===id); if(!item) return;
   const part = parts.find(p=>p.id===partId); if(!part) return;
   try {
-    const newQty = Math.max(0, (parseInt(part.quantity)||0) - (item.quantity||1));
-    // Deduct inventory
-    await updateDoc(coDoc('parts',partId), { quantity: newQty, updatedAt: serverTimestamp() });
+    // Live-resolve the tech's van — if the part was transferred AFTER AI Suggest
+    // ran, the stale partId points to the old location (already at 0). Prefer
+    // deducting from the tech's current van instead.
+    let targetPart = part;
+    const techLoc = resolveTechLocation(item.tech);
+    if (techLoc) {
+      const vanPart = findPartInVan(
+        { hcpUuid: part.hcpUuid, partNumber: part.partNumber, partId, partName: part.name },
+        techLoc.locationId
+      );
+      if (vanPart) targetPart = vanPart;
+    }
+
+    const newQty = Math.max(0, (parseInt(targetPart.quantity)||0) - (item.quantity||1));
+    // Deduct inventory from live-resolved part
+    await updateDoc(coDoc('parts', targetPart.id), { quantity: newQty, updatedAt: serverTimestamp() });
     // Save HCP UUID to part so future syncs auto-match
     if (item.hcpUuid) {
-      await updateDoc(coDoc('parts',partId), { hcpUuid: item.hcpUuid });
+      await updateDoc(coDoc('parts', targetPart.id), { hcpUuid: item.hcpUuid });
     }
     // Log transaction
     await addDoc(co('transactions'), {
-      partId, partName: part.name, partNumber: part.partNumber||'',
+      partId: targetPart.id, partName: targetPart.name, partNumber: targetPart.partNumber||'',
       type:'use', quantity: item.quantity||1,
       pulledBy: item.tech||'HCP Sync', jobRef: `HCP Job #${item.jobNumber}`,
-      locationId: part.boxId||null, locationName: part.boxName||null,
+      locationId: targetPart.boxId||null, locationName: targetPart.boxName||null,
       source:'hcp_reconciled', createdAt: serverTimestamp()
     });
     // Mark unmatched as resolved
-    await updateDoc(coDoc('hcpUnmatched',id), { status:'resolved', resolvedAt: serverTimestamp(), resolvedToPartId: partId });
+    await updateDoc(coDoc('hcpUnmatched',id), { status:'resolved', resolvedAt: serverTimestamp(), resolvedToPartId: targetPart.id });
     hcpUnmatchedItems = hcpUnmatchedItems.filter(i=>i._id!==id);
     updateUnmatchedBadge();
     document.getElementById('unmatchedCard_'+id)?.remove();
     if (!hcpUnmatchedItems.length) {
       document.getElementById('unmatchedEmpty').classList.remove('hidden');
     }
-    toast(`Matched & deducted ${item.quantity}× ${part.name}`,'ok');
+    toast(`Matched & deducted ${item.quantity}× ${targetPart.name}`,'ok');
   } catch(e) { toast('Error: '+e.message,'err'); }
 };
 
